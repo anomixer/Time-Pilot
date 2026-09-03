@@ -1,0 +1,9 @@
+-I
+C:/dev/llvm-mos-sdk/install/mos-platform/apple2e/include
+-I
+C:/dev/llvm-mos-sdk/install/mos-platform/common/include
+-I
+c:/dev/Time-Pilot/TimePilot-IIvera/src
+-D__MOS__
+-D__MOS_APPLE2E__
+-DVERA_BASE=0xC200
