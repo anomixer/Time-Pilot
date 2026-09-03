@@ -17,8 +17,8 @@ INCLUDE imag-regs.ld   /* __rc31 = 0x20 */
 MEMORY {
     /* Zero page variables: $21-$BF.  ($C0-$FF left for system/monitor.) */
     zp : ORIGIN = __rc31 + 1, LENGTH = 0xBF - (__rc31 + 1)
-    /* Main program RAM: $1400-$95FF (33,280 bytes). */
-    ram (rw) : ORIGIN = 0x1400, LENGTH = 0x8200
+    /* Main program RAM: $1400-$9BFF (34,816 bytes, leaves 8.5KB below $BE00 stack). */
+    ram (rw) : ORIGIN = 0x1400, LENGTH = 0x8800
 }
 
 REGION_ALIAS("c_readonly", ram)

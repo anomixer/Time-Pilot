@@ -208,6 +208,7 @@ static uint8_t  g_annDrawn;        /* stage announce already drawn this visit */
 static uint8_t  state = 0;         /* 0=title  1=playing  2=highscore entry  3=gameover  4=announce */
 static uint8_t  titleClear = 1;
 static uint8_t  cheatInfiniteLives = 0; /* 'C' key toggle: infinite fighters */
+static uint8_t  playerInvuln = 0;       /* Invulnerability countdown (frames) */
 
 /* Propeller animation via palette cycling */
 static const uint16_t colorPaletteProps[3] = { 0x0680, 0x00C0, 0x0FFF };
@@ -259,12 +260,6 @@ static void upload_pattern_stream(uint16_t addr, uint32_t art_off, uint16_t len)
 static uint32_t highScore[NUM_HIGHSCORES] = { 65816, 8086, 6809, 6502, 4040 };
 static char     highScoreInitials[NUM_HIGHSCORES][4] = { "K.O","N.A","M.I","O.O","Y.A" };
 
-/* ------------------------- VERA helpers ------------------------- */
-static void vera_set_addr(uint8_t inc, uint16_t addr) {
-    VERA.address_hi = inc;
-    VERA.address = addr;
-}
-
 /* Base palette, verbatim from CX16 colorPalette[] (data.c).
  * apple2ts renders each entry as 4-bit-per-channel (RRRR GGGG BBBB),
  * so these exact CX16 values produce the correct bright colors. */
@@ -286,8 +281,7 @@ static void load_palette(void) {
 /* Per-stage sky color (palette 0 = layer background), from CX16 colorPaletteSky.
  * Order: 1910 / 1940 / 1970 / 1982 / 2001. */
 static void set_stage_palette(void) {
-    static const uint16_t sky[5] = { 0x0006, 0x0056, 0x0065, 0x0505, 0x0000 };
-    uint16_t c = sky[stage];
+    uint16_t c = colorPaletteSky[stage];
     vera_set_addr(VERA_INC_BANK1, PALETTE_ADDR);
     VERA.data0 = c & 0xff;
     VERA.data0 = c >> 8;
@@ -428,8 +422,7 @@ static void screen_wipe(uint8_t color) {
 }
 
 static void screen_wipe_to_sky(uint8_t new_stage) {
-    static const uint16_t sky[5] = { 0x0006, 0x0056, 0x0065, 0x0505, 0x0000 };
-    uint16_t new_sky = sky[new_stage];
+    uint16_t new_sky = colorPaletteSky[new_stage];
 
     /* Temporarily map palette index 14 to the new sky color */
     vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 14 * 2));
@@ -589,7 +582,7 @@ static const uint32_t enemyArtOff[5] = {
     ART_ENEMY3_FRAMES_OFF, ART_ENEMY4_FRAMES_OFF
 };
 static const uint32_t bossArtOff[5] = {
-    ART_BOSS1_FRAMES_OFF, ART_BOSS1_FRAMES_OFF, ART_BOSS2_FRAMES_OFF,
+    ART_BOSS0_FRAMES_OFF, ART_BOSS1_FRAMES_OFF, ART_BOSS2_FRAMES_OFF,
     ART_BOSS3_FRAMES_OFF, ART_BOSS4_FRAMES_OFF
 };
 static const uint32_t wepArtOff[5] = {
@@ -602,7 +595,7 @@ static const uint16_t wepArtLen[5] = {
 static void upload_stage_art(void) {
     uint16_t esz = (stage == 4) ? 64 : 256;
     upload_stream_frames(PAT_ENEMY, enemyArtOff[stage], 8, esz);
-    upload_pattern_stream(PAT_BOSS, bossArtOff[stage], 256);
+    upload_pattern_stream(PAT_BOSS, bossArtOff[stage], (stage == 4) ? 1024 : 4096);
 
     static int8_t lastCloudEra = -1;
     uint8_t cloudEra = (stage == 4) ? 4 : 0;
@@ -651,6 +644,22 @@ static void setup_sprites(void) {
         }
     }
     hide_all_sprites();
+}
+
+static void upload_pcm_to_vram(void) {
+    /* Stream pcm.blob (19,455 bytes = 38 blocks) into VRAM Bank 0 $2000 */
+    vera_set_addr(VERA_INC_BANK0, 0x2000);
+    uint32_t off = 0;
+    while (off < 57258) {
+        uint8_t *chunk = disk_ensure(200, 57258, off);
+        uint16_t in_blk = 512 - (uint16_t)(off & 511);
+        uint16_t rem = (uint16_t)(57258 - off);
+        uint16_t n = (rem < in_blk) ? rem : in_blk;
+        for (uint16_t i = 0; i < n; i++) {
+            VERA.data0 = chunk[i];
+        }
+        off += n;
+    }
 }
 
 /* ------------------------- Gameplay ------------------------- */
@@ -764,7 +773,7 @@ static void spawn_boss(void) {
         bossBoom = 0;
         bossXpos = 104;
         bossVX = 3;
-        set_sprite(SPR_BOSS, PAT_BOSS, 104, 60, 1, 0x50);
+        set_sprite(SPR_BOSS, PAT_BOSS, 104, 60, 1, 0x60);   /* 32x16 huge boss! */
         audioPlaySource((int8_t)(AUDIO_BOSSL0 + (stage & 3)));   // looping boss theme
     }
 }
@@ -787,6 +796,18 @@ static void update_game(void) {
     int16_t scrollDy = -(int16_t)velDy[facing];
     uint8_t eDims = enemy_dims();
     uint8_t eW = (stage == 4) ? 8 : 16;
+
+    /* Player invulnerability flicker */
+    if (playerInvuln > 0) {
+        playerInvuln--;
+        if (playerBoom == 0 && playerDeadTimer == 0) {
+            if ((playerInvuln & 2) != 0) {
+                hide_sprite(SPR_PLAYER);
+            } else {
+                set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
+            }
+        }
+    }
 
     /* Player explosion handling */
     if (playerBoom > 0) {
@@ -936,6 +957,7 @@ static void update_game(void) {
             announceT = 35; /* ~1.5s READY countdown */
             g_annDrawn = 0;
             stageIntroState = 1;
+            playerInvuln = 90;  /* 1.5s spawn invulnerability */
             state = 4;      /* Stage announce / READY */
             return;
         }
@@ -1088,17 +1110,28 @@ static void update_game(void) {
     /* Boss: fly horizontally, fire; player bullets vs boss; boss vs player. */
     if (bossOn) {
         bossXpos = (uint16_t)((int16_t)bossXpos + bossVX + scrollDx);
-        if (bossXpos < 20)  bossVX = 3;
-        if (bossXpos > 200) bossVX = -3;
+        if (bossXpos < 10)  bossVX = 3;
+        if (bossXpos > 180) bossVX = -3;
+
+        /* Directional sprite & propeller animation: 32x16 */
+        uint16_t bPat = PAT_BOSS;
+        if (stage == 4) {
+            bPat += (uint16_t)((frameCount >> 2) & 1) * 512;
+        } else {
+            uint8_t dirOff = (bossVX > 0) ? 0 : 4;  /* frames 0..3 right, 4..7 left */
+            bPat += (uint16_t)(dirOff + ((frameCount >> 2) & 3)) * 512;
+        }
+        set_sprite_pat(SPR_BOSS, bPat);
         move_sprite(SPR_BOSS, bossXpos, 60);
+
         if (--bossFire == 0) {
             bossFire = 25;
-            spawn_ebullet(bossXpos + 8, 60 + 8, 4);
+            spawn_ebullet(bossXpos + 16, 60 + 8, 4);
         }
         for (i = 0; i < NUM_BULLETS; i++) {
             if (bulletOn[i]) {
                 int16_t bx = (int16_t)bulletX[i], by = (int16_t)bulletY[i];
-                if (bx + 8 > bossXpos && bx < bossXpos + 16 &&
+                if (bx + 8 > bossXpos && bx < bossXpos + 32 &&
                     by + 8 > 60 && by < 60 + 16) {
                     bulletOn[i] = 0;
                     hide_sprite(SPR_BULLET_BASE + i);
@@ -1109,7 +1142,7 @@ static void update_game(void) {
                         set_sprite(SPR_BOSS, PAT_EXPL32, bossXpos, 60, 1, 0x60);
                         score += 3000;
                         check_extra_life();
-                        popupOn = 1; popupX = (int16_t)bossXpos; popupY = 60; popupFrame = 3; popupTimer = 45; /* "3000" popup */
+                        popupOn = 1; popupX = (int16_t)bossXpos + 8; popupY = 60; popupFrame = 3; popupTimer = 45; /* "3000" popup */
                         g_hudDirty = 1;
                         audioPlaySource(AUDIO_BIG_EXPLOSION);
                         /* Spectacular boss defeat: all airborne enemies and bomber explode! */
@@ -1134,7 +1167,7 @@ static void update_game(void) {
                 }
             }
         }
-        if (bossXpos + 16 > playerX && bossXpos < playerX + 16 &&
+        if (playerInvuln == 0 && bossXpos + 32 > playerX && bossXpos < playerX + 16 &&
             60 + 16 > playerY && 60 < playerY + 16) {
             bossBoom = 20;
             bossOn = 0;
@@ -1181,6 +1214,25 @@ static void update_game(void) {
         if (stageClearTimer == 0) {
             stage = (uint8_t)((stage + 1) % NUM_STAGES);
             enemiesKilled = 0;
+            playerInvuln = 90;  /* 1.5s invulnerability upon entering new era */
+
+            /* Wipe all leftover enemies, bullets, bomber, and boss from previous era */
+            for (i = 0; i < NUM_ENEMIES; i++) {
+                enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
+                hide_sprite(SPR_ENEMY_BASE + i);
+            }
+            for (i = 0; i < NUM_EBULLETS; i++) {
+                ebOn[i] = 0;
+                hide_sprite(SPR_EBULLET_BASE + i);
+            }
+            for (i = 0; i < NUM_BULLETS; i++) {
+                bulletOn[i] = 0;
+                hide_sprite(SPR_BULLET_BASE + i);
+            }
+            paraOn = 0; hide_sprite(SPR_PARACHUTE);
+            bomberOn = 0; bomberBoom = 0; hide_sprite(SPR_BOMBER);
+            bossOn = 0; bossBoom = 0; hide_sprite(SPR_BOSS);
+
             screen_wipe_to_sky(stage);      /* counter-clockwise radar sweep to next era! */
             set_stage_palette();
             upload_stage_art();
@@ -1260,8 +1312,8 @@ static void update_game(void) {
         }
     }
 
-    /* Enemy bullet vs player; enemy vs player (only if player alive). */
-    if (playerBoom == 0 && playerDeadTimer == 0) {
+    /* Enemy bullet vs player; enemy vs player (only if player alive and not invulnerable). */
+    if (playerBoom == 0 && playerDeadTimer == 0 && playerInvuln == 0) {
         for (i = 0; i < NUM_EBULLETS; i++) {
             if (ebOn[i]) {
                 int16_t bx = (int16_t)ebX[i], by = (int16_t)ebY[i];
@@ -1576,9 +1628,10 @@ static void init_game(uint8_t players_mode) {
     bossBoom = 0;
     stageClearTimer = 0;
     stageIntroState = 0;
-    announceT = 50;
+    announceT = 0;
     playerBoom = 0;
     playerDeadTimer = 0;
+    playerInvuln = 90;  /* 1.5s initial game start invulnerability */
     set_stage_palette();
     for (i = 0; i < NUM_BULLETS; i++) { bulletOn[i] = 0; }
     for (i = 0; i < NUM_EBULLETS; i++) { ebOn[i] = 0; }
@@ -1681,7 +1734,6 @@ static const int8_t joyDirAngles[16] = {
 static void start_game_from_ui(uint8_t mode) {
     attractCycleCount = 0;
     isDemoMode = 0;
-    audioPlaySource(AUDIO_GAME_START);
 
     /* Hide sprites during asset streaming to eliminate any mid-load flicker */
     VERA.display.video = 0x11;
@@ -1857,6 +1909,16 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
         if (steerStall & 1) {
             facing = (facing + 1) & 31;
         }
+    } else if (ku == 'W' || k == 11) {
+        /* Up Arrow / W: steer toward heading UP (0) */
+        if (steerStall & 1 && facing != 0) {
+            facing = (facing <= 16) ? ((facing + 31) & 31) : ((facing + 1) & 31);
+        }
+    } else if (ku == 'S' || k == 10) {
+        /* Down Arrow / S: steer toward heading DOWN (16) */
+        if (steerStall & 1 && facing != 16) {
+            facing = (facing < 16) ? ((facing + 1) & 31) : ((facing + 31) & 31);
+        }
     }
 
     if (useJoystick) {
@@ -1981,7 +2043,9 @@ int main(void) {
     paint_screen();
     draw_text(14, 5, "INITIALIZING... PLEASE WAIT...", 9);
     setup_sprites();      // streams art from the HDV blob into VERA pattern RAM
+    upload_pcm_to_vram(); // streams opening theme PCM into VRAM Bank 0
     audioInit();
+    audioPlaySource(AUDIO_COINDROP);
     VERA.display.video = 0x51;  /* NOW enable sprites! */
     VERA.irq_flags = VERA_IRQ_VSYNC; /* Prime VSYNC flag for main loop lock */
 
@@ -2107,37 +2171,19 @@ int main(void) {
         case 4: /* Stage announce (PLAYER 1 / A.D. yyyy / STAGE n or READY) */
             {
                 if (announceT == 0) {
-                    announceT = stageIntroState ? 100 : 180;   /* ~3.0s on stage start, ~1.7s on ready */
+                    announceT = stageIntroState ? 100 : 455;   /* ~7.6s (7.13s music + 0.02s tail + natural FIFO drain) */
                     g_hudDirty = 1;
+                    if (!stageIntroState && !isDemoMode) {
+                        audioPlaySource(AUDIO_GAME_START);
+                    }
                 }
                 stage_announce();
                 draw_hud();
-                /* Allow player to steer the plane freely (matches CX16 prePlayTimer behavior, fire disabled) */
+                /* Allow player to steer the plane freely */
                 if (!isDemoMode) {
                     update_player_steering(k, ku);
                 }
 
-                if (!(frameCount & 1)) {
-                    int16_t scrollDx = -(int16_t)velDx[facing];
-                    int16_t scrollDy = -(int16_t)velDy[facing];
-
-                    /* Drift clouds with 3-tier parallax matching current plane heading */
-                    for (uint8_t ci = 0; ci < NUM_CLOUDS; ci++) {
-                        uint8_t t = cloudType[ci];
-                        int16_t spd = (t == 0) ? 1 : (t == 1) ? 2 : 3;
-                        int16_t w = (t == 0) ? 16 : (t == 1) ? 32 : 64;
-                        int16_t spanX = (int16_t)(224 + w);
-                        int16_t cx = (int16_t)cloudX[ci] + (scrollDx * spd) / 2;
-                        int16_t cy = (int16_t)cloudY[ci] + (scrollDy * spd) / 2;
-                        if (cx < -w)       cx += spanX;
-                        else if (cx > 224) cx -= spanX;
-                        if (cy < -16)      cy += 256;
-                        else if (cy > 240) cy -= 256;
-                        cloudX[ci] = cx;
-                        cloudY[ci] = cy;
-                        move_sprite(SPR_CLOUD_BASE + ci, (uint16_t)cx, (uint16_t)cy);
-                    }
-                }
                 if (--announceT == 0) {
                     /* Erase announce text only (sky and clouds remain undisturbed) */
                     draw_text(11, 10, "        ", 0);

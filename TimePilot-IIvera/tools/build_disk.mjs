@@ -134,6 +134,14 @@ const startupBytes = compileApplesoftBasic(srcDir, "startup.bas")
 
 // 3. Write files into the ProDOS image.
 addFile("MAIN.BIN", 0x06, 0x2000, program)
+
+const bin4Path = path.join(buildDir, "main4.bin")
+if (fs.existsSync(bin4Path)) {
+  const raw4 = new Uint8Array(fs.readFileSync(bin4Path))
+  const program4 = raw4.subarray(4)
+  addFile("MAIN4.BIN", 0x06, 0x2000, program4)
+}
+
 addFile("STARTUP", 0xFC, 0x0801, startupBytes)
 disk[2 * 512 + 0x25] = fileCount & 0xFF
 disk[2 * 512 + 0x26] = (fileCount >> 8) & 0xFF
@@ -142,3 +150,4 @@ const outPath = path.join(projectRoot, "TimePilot-IIvera.po")
 fs.writeFileSync(outPath, disk)
 console.log(`Built ${outPath} (${disk.length} bytes), files=${fileCount}`)
 console.log(`  MAIN.BIN raw=${program.length} bytes (load $2000)`)
+if (fs.existsSync(bin4Path)) console.log(`  MAIN4.BIN added for Slot 4 support`)

@@ -145,6 +145,11 @@ struct __vera {
 #define VERA_INC_BANK0  (VERA_INC_1)
 #define VERA_INC_BANK1  (VERA_INC_1 | 1)
 
+static inline void vera_set_addr(uint8_t inc, uint16_t addr) {
+    VERA.address_hi = inc;
+    VERA.address = addr;
+}
+
 /* VERA IRQ flags. */
 #define VERA_IRQ_VSYNC       0x01
 #define VERA_IRQ_RASTER      0x02

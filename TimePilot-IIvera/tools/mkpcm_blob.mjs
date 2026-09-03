@@ -16,46 +16,91 @@ const BLOCK_SIZE = 512
 const VRAM_AUDIO_BASE = 0x2000  // Bank 0 offset where audio blob is uploaded
 const VRAM_AUDIO_LIMIT = 57344  // $02000..$0FFFF is 56KB
 
-// Target rate: ~6485 Hz (VERA audio.rate = 17)
+// Target rate: ~8010 Hz (VERA audio.rate = 21: 48828.125 * 21 / 128 = 8010.5 Hz)
 const SRC_RATE = 12207
-const DST_RATE = 6485
+const DST_RATE = 8010
 
 const SOURCES = [
-  { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      maxSec: 0.4 },
-  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    maxSec: 0.8 },
+  { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      maxSec: 0 },
+  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    maxSec: 7.13, tailSec: 0.02 },
   { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     maxSec: 0 },
-  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    maxSec: 0.8 },
-  { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm" },
-  { name: "AUDIO_ROCKET_FLY",    file: "rocket_fly.pcm",    loops: 1 },
-  { name: "AUDIO_BOSSL0",        file: "bossl0.pcm",        loops: 1 },
-  { name: "AUDIO_BOSSL1",        file: "bossl1.pcm",        loops: 1 },
-  { name: "AUDIO_BOSSL2",        file: "bossl2.pcm",        loops: 1 },
-  { name: "AUDIO_BOSSL3",        file: "bossl3.pcm",        loops: 1 },
-  { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm" },
-  { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm" },
-  { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm" },
-  { name: "AUDIO_BOMB",          file: "bomb.pcm" },
-  { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm" },
-  { name: "AUDIO_PICKUP",        file: "pickup.pcm" },
-  { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm" },
-  { name: "AUDIO_WAVE_START",    file: "wave_start.pcm" },
-  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", maxSec: 0.8 },
+  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    maxSec: 0 },
+  { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  maxSec: 0 },
+  { name: "AUDIO_ROCKET_FLY",    file: "rocket_fly.pcm",    maxSec: 0 },
+  { name: "AUDIO_BOSSL0",        file: "bossl0.pcm",        maxSec: 0 },
+  { name: "AUDIO_BOSSL1",        file: "bossl1.pcm",        maxSec: 0 },
+  { name: "AUDIO_BOSSL2",        file: "bossl2.pcm",        maxSec: 0 },
+  { name: "AUDIO_BOSSL3",        file: "bossl3.pcm",        maxSec: 0 },
+  { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm", maxSec: 0 },
+  { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm", maxSec: 0 },
+  { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   maxSec: 0 },
+  { name: "AUDIO_BOMB",          file: "bomb.pcm",          maxSec: 0 },
+  { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", maxSec: 0 },
+  { name: "AUDIO_PICKUP",        file: "pickup.pcm",        maxSec: 0 },
+  { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    maxSec: 0 },
+  { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    maxSec: 0 },
+  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", maxSec: 0 },
   { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      maxSec: 0 },
 ]
 
-function resampleLinear(src, targetLen) {
-  if (targetLen <= 0) return new Uint8Array(0)
-  const out = new Uint8Array(targetLen)
-  const scale = (src.length - 1) / (targetLen - 1 || 1)
+function processPCM(raw, maxSec, tailSec) {
+  // Take up to maxSec of original samples (1:1 true tempo)
+  const rawLen = (maxSec > 0) ? Math.min(raw.length, Math.round(maxSec * SRC_RATE)) : raw.length
+  if (rawLen <= 0) return new Uint8Array(0)
+
+  // Convert signed 8-bit to float
+  const src = new Float32Array(rawLen)
+  for (let i = 0; i < rawLen; i++) {
+    src[i] = (raw[i] >= 128) ? raw[i] - 256 : raw[i]
+  }
+
+  // Target length reflects EXACT 1:1 playback duration at DST_RATE
+  const targetLen = Math.round(rawLen * DST_RATE / SRC_RATE)
+  const out = new Float32Array(targetLen)
+
+  // Pure sample-rate conversion (NO pitch shifting, NO tempo speed-up!)
+  const ratio = SRC_RATE / DST_RATE
   for (let i = 0; i < targetLen; i++) {
-    const srcPos = i * scale
+    const srcPos = i * ratio
     const idx = Math.floor(srcPos)
     const frac = srcPos - idx
-    const s0 = src[idx]
-    const s1 = idx + 1 < src.length ? src[idx + 1] : s0
-    out[i] = Math.round(s0 * (1 - frac) + s1 * frac)
+    const s0 = src[idx] || 0
+    const s1 = (idx + 1 < rawLen) ? src[idx + 1] : s0
+    out[i] = s0 * (1 - frac) + s1 * frac
   }
-  return out
+
+  // Normalize: peak to 115
+  let peak = 0
+  for (let i = 0; i < targetLen; i++) {
+    const v = Math.abs(out[i])
+    if (v > peak) peak = v
+  }
+  const gain = (peak > 0) ? (115.0 / peak) : 1.0
+  for (let i = 0; i < targetLen; i++) {
+    out[i] *= gain
+  }
+
+  // Gentle fade-out only in the final 0.05s (400 samples) to prevent click
+  const fadeLen = Math.min(400, targetLen)
+  for (let i = 0; i < fadeLen; i++) {
+    const fade = (fadeLen - i) / fadeLen
+    out[targetLen - fadeLen + i] *= fade
+  }
+
+  // Append silence tail (0x80 = signed zero) for natural decay
+  const silenceSamples = Math.round((tailSec || 0) * DST_RATE)
+  const totalLen = targetLen + silenceSamples
+
+  // Pack to Uint8Array (8-bit signed, 0x80 = silence)
+  const res = new Uint8Array(totalLen)
+  for (let i = 0; i < targetLen; i++) {
+    let v = Math.round(out[i])
+    if (v < -128) v = -128
+    if (v > 127) v = 127
+    res[i] = (v < 0) ? v + 256 : v
+  }
+  res.fill(0x80, targetLen) // silence tail
+  return res
 }
 
 const blob = []
@@ -71,15 +116,10 @@ for (const s of SOURCES) {
   if (!fs.existsSync(p)) throw new Error(`Missing PCM sample: ${p}`)
   const raw = new Uint8Array(fs.readFileSync(p))
 
-  let targetLen = Math.round(raw.length * DST_RATE / SRC_RATE)
-  if (s.maxSec && targetLen > Math.round(s.maxSec * DST_RATE)) {
-    targetLen = Math.round(s.maxSec * DST_RATE)
-  }
-
-  const resampled = resampleLinear(raw, targetLen)
-  rows.push({ ...s, start: VRAM_AUDIO_BASE + offset, length: resampled.length, loops: s.loops ? 1 : 0 })
-  blob.push(resampled)
-  offset += resampled.length
+  const processed = processPCM(raw, s.maxSec, s.tailSec || 0)
+  rows.push({ ...s, start: VRAM_AUDIO_BASE + offset, length: processed.length, loops: s.loops ? 1 : 0 })
+  blob.push(processed)
+  offset += processed.length
 }
 
 const total = offset
@@ -98,7 +138,7 @@ let header = [
   "#include <stdint.h>",
   "typedef struct { uint16_t start; uint16_t length; uint8_t loops; } TpAudioData;",
   "#define NUM_AUDIO_SOURCES 20",
-  "#define VERA_PCM_RATE 17  // ~6485 Hz (25MHz/512 * 17/128)",
+  "#define VERA_PCM_RATE 21  // ~8010 Hz (25MHz/512 * 21/128)",
   `#define VRAM_AUDIO_BASE 0x${VRAM_AUDIO_BASE.toString(16).toUpperCase()}`,
   `#define PCM_START_BLOCK ${PCM_START_BLOCK}`,
   `#define PCM_TOTAL_BYTES ${total}`,

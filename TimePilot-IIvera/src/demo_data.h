@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#define DEMO_START_BLOCK    980
+#define DEMO_START_BLOCK    1020
 #define DEMO_ATTRACT_LENGTH 1472
 
 #endif /* _DEMO_DATA_H */

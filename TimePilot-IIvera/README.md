@@ -56,28 +56,28 @@
 * **第一關：A.D. 1910（雙翼機時代）**
   * **敵機**：一戰經典雙翼教練機，發射標準機槍子彈。
   * **天空**：深湛深藍色（Deep Blue）。
-  * **Boss**：巨型雙翼重轟炸機（HP 4）。
+  * **Boss**：**齊柏林巨型飛艇（Zeppelin / Blimp）**（32×16，長度達 32 像素，前後動態螺旋槳旋轉，HP 5）。
 * **第二關：A.D. 1940（二戰螺旋槳時代）**
   * **敵機**：二戰單葉戰鬥機。
   * **大型轟炸機編隊 (`l1bomber`)**：每約 10 秒由左或右側水準飛掠全螢幕（32×16 雙發引擎轟炸機，血量 4）。
   * **投擲炸彈 (`bomb`)**：敵機與轟炸機會投下隨重力加速下墜的炸彈！
   * **擊墜獎勵**：擊毀大型轟炸機可獲得 **1,500 分**，引發 32×16 大爆炸並彈出 `1500` 浮動計分！
-  * **Boss**：三翼重裝巨型轟炸機（HP 4）。
+  * **Boss**：**二戰四引擎重型轟炸機（Heavy Bomber）**（32×16，HP 5）。
 * **第三關：A.D. 1970（噴射直升機時代）**
-  * **敵機**：戰鬥攻擊直升機。
+  * **敵機**：戰鬥攻擊直升機（16×16 置中校準，旋翼動態旋轉）。
   * **旋轉迴旋鏢 (`boomerang`)**：直升機會射出 8 影格高速旋轉的迴旋鏢武器！
   * **天空**：晴空湛藍色（Sunny Sky Blue）。
-  * **Boss**：重型雙旋翼空中武裝砲艇（HP 4）。
+  * **Boss**：**CH-47 雙旋翼契努克巨型空中武裝砲艇（Chinook Helicopter）**（32×16，前後雙旋翼動態轉動，HP 5）。
 * **第四關：A.D. 1982（現代超音速噴射機時代）**
   * **敵機**：三角翼超音速噴射戰鬥機。
   * **追蹤飛彈 (`rocket`)**：噴射機會發射具備 16 向旋轉角度的**追蹤火箭**，在空中轉向追逐玩家戰機！
   * **天空**：黑夜海軍藍（Midnight Navy）。
-  * **Boss**：B-2 風格巨型超音速隱形戰略轟炸機（HP 4）。
+  * **Boss**：**B-52 風格巨型超音速隱形戰略轟炸機（Supersonic Bomber）**（32×16，HP 5）。
 * **第五關：A.D. 2001（未來太空時代）**
   * **背景**：雲朵替換為多層次太空隕石群（`astro0/1/2`），背景為漆黑無垠宇宙。
   * **敵機**：敏捷的脈衝幽浮（UFO）。
   * **脈衝雷射球 (`sbullet`)**：幽浮會發射 8 影格色彩變換的能量雷射脈衝光球！
-  * **Boss**：外星指揮太空母艦（Alien Command Space Fortress）。
+  * **Boss**：**外星指揮太空母艦（Alien Command Mothership）**（32×16，HP 5）。
 
 通關第五關後，遊戲將循環並提升難度！
 
@@ -381,6 +381,36 @@
 
 ---
 
+### 32. 全 5 關正統 32x16 巨大 Boss 與航向旋轉動態（Authentic 32x16 Boss Fleet）
+* **真·巨大首領機全數就位**：
+  先前代碼誤將 Boss 設為 16x16，且 Stage 0 與 Stage 1 共用小飛機。現全數換裝為 CX16 原版 32x16 巨型像素資產：
+  - Stage 0: 齊柏林巨型飛艇（長達 32 像素）
+  - Stage 1: 二戰四發重型轟炸機
+  - Stage 2: CH-47 雙旋翼巨型契努克直升機
+  - Stage 3: 超音速遠程戰略轟炸機
+  - Stage 4: 外星巨型母艦
+* **左右航向面朝與螺旋槳／旋翼動畫**：
+  往右飛使用 Frames 0..3，往左飛使用 Frames 4..7，具備真實旋轉動態，判定寬度擴展為 32 像素！
+
+---
+
+### 33. 跨關卡實體大掃除與 1.5 秒無敵防禦期（Stage Transition Entity Wipe & Invulnerability）
+* **消滅幽靈子彈暴斃 Bug**：換關瞬間強制清空所有敵機與敵彈，杜絕殘留隱形子彈引發的「開局莫名暴斃」。
+* **開局與重生 1.5 秒（90 幀）閃爍無敵**：開局、換關與重生時，戰機享有 1.5 秒無敵保護（`playerInvuln`），完全免疫任何傷害！
+
+---
+
+### 34. 800KB 輕量化 HDV 磁碟全面轉移（800KB Standard ProDOS HDV）
+* 由 32MB 巨大映像檔全面升級為標準 **800 KB**（`819,200 bytes`，1600 blocks）。
+* `pcm.blob`（200..311）、`art.blob`（900..1010）、`demo.blob`（1020..1022）在 1600 blocks 內無縫容納，MLI `$80` 核心直讀常數保持 100% 完美相容。
+
+---
+
+### 35. `-Oz` 極限最佳化徹底根除 `NO BUFFERS AVAILABLE`
+* 編譯旗標升級為 `-Oz`，`MAIN.BIN` 體積直降 5.6KB 至 **28,056 bytes**，載入跨度 `$1400..$8198`，距離 ProDOS `HIMEM`（`$9600`）擁有超過 **5.2 KB** 的安全緩衝！
+
+---
+
 ## 編譯與執行 (Build & Run)
 
 ### 開發環境需求
@@ -394,9 +424,9 @@
 build.bat
 ```
 建置流程：
-1. `tools/mkpcm_blob.mjs` + `tools/mkart.mjs`：將 20 首 PCM 音效與 28 組精靈陣列打包為 ProDOS 區塊資料庫。
-2. `llvm-mos-clang`：編譯 `src/main.c`、`audio.c`、`disk.c`、`mli.s` 為 `MAIN.BIN`。
-3. `tools/build_hdv.mjs`：產生 32MB 可開機的 ProDOS 映像檔 `TimePilot-IIvera.hdv`。
+1. `tools/mkpcm_blob.mjs` + `tools/mkart.mjs`：將 PCM 音效與正版 32x16 精靈陣列打包為 ProDOS 區塊資料庫。
+2. `llvm-mos-clang` (-Oz)：編譯 `src/main.c`、`audio.c`、`disk.c`、`mli.s` 為 `MAIN.BIN` (Slot 2) 與 `MAIN4.BIN` (Slot 4)。
+3. `tools/build_hdv.mjs`：產生 800KB 可開機的 ProDOS 映像檔 `TimePilot-IIvera.hdv`。
 
 ### 模擬器載入執行
-將產出的 `TimePilot-IIvera.hdv` 載入至 **apple2ts** 或支援 VERA 擴充卡之 Apple IIe 模擬器／實機，開機自動進入 BASIC 並執行 `BRUN MAIN.BIN` 即可暢玩！
+將產出的 `TimePilot-IIvera.hdv`（800 KB）載入至 **apple2ts** 或支援 VERA 擴充卡之 Apple IIe 模擬器／實機，開機自動進入 BASIC 並執行 `BRUN MAIN.BIN`（或 Slot 4 自適應）即可暢玩！

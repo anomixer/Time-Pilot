@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, "..")
 const srcDir = path.join(projectRoot, "src")
 const buildDir = path.join(projectRoot, "build")
-const baseHdvPath = "C:/dev/veratest/assets/ProDOS 2.4.3.hdv"
+const baseHdvPath = path.join(projectRoot, "800kb.hdv")
 const BLOCK = 512
 
 if (!fs.existsSync(baseHdvPath)) throw new Error(`Base HDV not found: ${baseHdvPath}`)
@@ -60,7 +60,7 @@ const demoPath = path.join(buildDir, "demo.blob")
 let DEMO_START_BLOCK = 0, DEMO_BLOCKS = 0
 if (fs.existsSync(demoPath)) {
   const demo = new Uint8Array(fs.readFileSync(demoPath))
-  DEMO_START_BLOCK = 980
+  DEMO_START_BLOCK = 1020
   DEMO_BLOCKS = Math.ceil(demo.length / BLOCK)
   const start = DEMO_START_BLOCK * BLOCK
   disk.set(demo, start)
@@ -213,19 +213,19 @@ const entryCount = keep.length + appFiles.length + dataFiles.length
 vol[0x25] = entryCount & 0xFF
 vol[0x26] = (entryCount >> 8) & 0xFF
 
-// ---- Mark newly-allocated + audio blocks as used in the ProDOS bitmap ----
-// (Blocks 6..21 hold the 16-bit bitmap; bit set = FREE, clear = USED.)
+// ---- Mark newly-allocated + audio/art/demo blocks as used in the ProDOS bitmap ----
+// (Block 6 holds the 200-byte bitmap for 1600 blocks; bit set = FREE, clear = USED.)
 const setUsed = (b) => {
-  const bmpBlock = 6 + Math.floor(b / 64)
-  const byteIdx = Math.floor((b % 64) / 8)
-  const bit = 7 - ((b % 64) % 8)
-  disk[bmpBlock * BLOCK + byteIdx] &= ~(1 << bit)
+  const byteIdx = Math.floor(b / 8)
+  const bit = 7 - (b % 8)
+  disk[6 * BLOCK + byteIdx] &= ~(1 << bit)
 }
 for (const b of newlyAllocated) setUsed(b)
 for (let b = PCM_START_BLOCK; b < PCM_START_BLOCK + PCM_BLOCKS; b++) setUsed(b)
 if (ART_BLOCKS > 0) for (let b = ART_START_BLOCK; b < ART_START_BLOCK + ART_BLOCKS; b++) setUsed(b)
+if (DEMO_BLOCKS > 0) for (let b = DEMO_START_BLOCK; b < DEMO_START_BLOCK + DEMO_BLOCKS; b++) setUsed(b)
 
 const outPath = path.join(projectRoot, "TimePilot-IIvera.hdv")
 fs.writeFileSync(outPath, disk)
-console.log(`\n  Built ${outPath} (${disk.length} bytes = ${(disk.length / 1024 / 1024).toFixed(1)} MB)`)
+console.log(`\n  Built ${outPath} (${disk.length} bytes = ${(disk.length / 1024).toFixed(0)} KB)`)
 console.log(`  Root files: ${keep.length} system + ${appFiles.map(f => f.name).join(" + ")}`)

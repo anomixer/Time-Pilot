@@ -48,6 +48,14 @@ static void psg_silence(uint8_t ch) {
     VERA.data0 = 0x00;  /* Volume = 0 */
 }
 
+#define VERA_PCM_CTRL_REG (*(volatile uint8_t *)(VERA_BASE + 0x1B))
+#define VERA_PCM_RATE_REG (*(volatile uint8_t *)(VERA_BASE + 0x1C))
+#define VERA_PCM_DATA_REG (*(volatile uint8_t *)(VERA_BASE + 0x1D))
+
+#define PCM_START_LEN 57258
+static uint8_t  pcmActive = 0;
+static uint16_t pcmOffset = 0;
+
 void audioInit(void) {
     /* Mute all 16 PSG channels */
     for (uint8_t c = 0; c < 16; c++) {
@@ -57,6 +65,10 @@ void audioInit(void) {
         sfxTimer[i] = 0;
         sfxType[i] = 0;
     }
+    pcmActive = 0;
+    VERA_PCM_RATE_REG = 0;
+    VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
+    VERA_PCM_CTRL_REG = 0x00; /* Mute PCM */
     activePlaying = -1;
 }
 
@@ -65,11 +77,12 @@ void audioCleanup(void) {
 }
 
 int8_t audioIsSourcePlaying(int8_t source) {
+    if (source == AUDIO_GAME_START || source == AUDIO_NEXT_LEVEL) return pcmActive;
     return (activePlaying == source);
 }
 
 void audioStopSource(int8_t source) {
-    if (source < 0 || activePlaying == source) {
+    if (source < 0 || activePlaying == source || source == AUDIO_GAME_START) {
         audioInit();
     }
 }
@@ -79,6 +92,34 @@ void audioPlaySource(int8_t source) {
     activePlaying = source;
 
     switch (source) {
+    case AUDIO_COINDROP:
+        /* Crisp arcade coin drop metallic ping: ~1560Hz */
+        sfxType[CH_PICKUP] = 2;
+        sfxTimer[CH_PICKUP] = 24;
+        sfxFreq[CH_PICKUP] = 1560;
+        sfxVol[CH_PICKUP] = 0x3F;
+        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x10);
+        break;
+
+    case AUDIO_GAME_START:
+    case AUDIO_NEXT_LEVEL:
+        pcmActive = 1;
+        pcmOffset = 0;
+        VERA_PCM_RATE_REG = 0;
+        VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
+
+        /* Pre-buffer 3000 bytes directly into FIFO from VRAM Bank 0 $2000 */
+        vera_set_addr(VERA_INC_BANK0, 0x2000);
+        for (uint16_t i = 0; i < 3000; i++) {
+            VERA_PCM_DATA_REG = VERA.data0;
+        }
+        pcmOffset = 3000;
+
+        /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 21 (~8010 Hz) */
+        VERA_PCM_CTRL_REG = 0x0F; /* Mono, 8-bit, Vol 15 */
+        VERA_PCM_RATE_REG = 21;   /* 8,010 Hz */
+        break;
+
     case AUDIO_PLAYER_SHOOT:
         /* Crisp descending pulse laser: ~1400 down to 700 */
         sfxType[CH_PLAYER] = 1;
@@ -98,31 +139,39 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_ENEMY_EXPLODE:
-    case AUDIO_WAPON_EXPLODE:
-        /* Snappy noise blast */
-        sfxType[CH_EXPL] = 1;
-        sfxTimer[CH_EXPL] = 14;
-        sfxFreq[CH_EXPL] = 120;
+        /* Enemy explosion: rapid descending pulse sweep from high pitch down */
+        sfxType[CH_EXPL] = 1;   /* descending sweep */
+        sfxTimer[CH_EXPL] = 18;
+        sfxFreq[CH_EXPL] = 3000;
         sfxVol[CH_EXPL] = 0x3F;
-        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* White Noise */
+        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* Noise burst */
+        break;
+
+    case AUDIO_WAPON_EXPLODE:
+        /* Weapon impact: heavier descending pulse sweep */
+        sfxType[CH_EXPL] = 1;
+        sfxTimer[CH_EXPL] = 24;
+        sfxFreq[CH_EXPL] = 2000;
+        sfxVol[CH_EXPL] = 0x3F;
+        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* Noise burst */
         break;
 
     case AUDIO_BIG_EXPLOSION:
-        /* Deep rumbling boss/player explosion */
-        sfxType[CH_EXPL] = 2;
-        sfxTimer[CH_EXPL] = 30;
-        sfxFreq[CH_EXPL] = 60;
+        /* BIG explosion: multi-layer - pulse sweep on CH_EXPL + descending saw on CH_PLAYER */
+        sfxType[CH_EXPL] = 2;    /* big explosion type */
+        sfxTimer[CH_EXPL] = 45;
+        sfxFreq[CH_EXPL] = 4000;
         sfxVol[CH_EXPL] = 0x3F;
-        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* Heavy Noise */
-        /* Accompany with sub-bass triangle */
-        psg_write(CH_ENEMY, 80, 0xC0 | 0x38, 0x80); /* Triangle rumble */
-        sfxType[CH_ENEMY] = 3;
-        sfxTimer[CH_ENEMY] = 24;
+        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* Noise crash */
+        /* Descending bass sweep for depth */
+        sfxType[CH_ENEMY] = 3;   /* descending bass rumble */
+        sfxTimer[CH_ENEMY] = 45;
+        sfxFreq[CH_ENEMY] = 1800;
         sfxVol[CH_ENEMY] = 0x38;
+        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x40); /* Sawtooth rumble */
         break;
 
     case AUDIO_PICKUP:
-    case AUDIO_COINDROP:
         /* Happy ascending arpeggio: C5 -> E5 -> G5 */
         sfxType[CH_PICKUP] = 1;
         sfxTimer[CH_PICKUP] = 15;
@@ -133,7 +182,7 @@ void audioPlaySource(int8_t source) {
 
     case AUDIO_EXTRA_LIFE:
         /* Fanfare triple burst */
-        sfxType[CH_PICKUP] = 2;
+        sfxType[CH_PICKUP] = 4;
         sfxTimer[CH_PICKUP] = 20;
         sfxFreq[CH_PICKUP] = 1084; /* E5 */
         sfxVol[CH_PICKUP] = 0x3F;
@@ -161,14 +210,33 @@ void audioPlaySource(int8_t source) {
         psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x80); /* Triangle */
         break;
 
-    case AUDIO_GAME_START:
-    case AUDIO_NEXT_LEVEL:
-        /* Classic stage fanfare start */
-        sfxType[CH_PICKUP] = 4;
-        sfxTimer[CH_PICKUP] = 24;
-        sfxFreq[CH_PICKUP] = 650;
+    case AUDIO_WAVE_START:
+        /* Stage clear fanfare: rising pulse chord */
+        sfxType[CH_PICKUP] = 1;
+        sfxTimer[CH_PICKUP] = 20;
+        sfxFreq[CH_PICKUP] = 680;  /* A4 */
         sfxVol[CH_PICKUP] = 0x3F;
         psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
+        /* Add a harmony tone on CH_PLAYER */
+        sfxType[CH_PLAYER] = 0;
+        sfxTimer[CH_PLAYER] = 20;
+        sfxFreq[CH_PLAYER] = 1020; /* E5 - major third up */
+        sfxVol[CH_PLAYER] = 0x38;
+        psg_write(CH_PLAYER, sfxFreq[CH_PLAYER], 0xC0 | sfxVol[CH_PLAYER], 0x20);
+        break;
+
+    case AUDIO_TIMEWARP:
+        /* Time warp whoosh: rising then fading noise sweep */
+        sfxType[CH_EXPL] = 1;
+        sfxTimer[CH_EXPL] = 30;
+        sfxFreq[CH_EXPL] = 800;
+        sfxVol[CH_EXPL] = 0x3F;
+        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* White Noise whoosh */
+        sfxType[CH_ENEMY] = 2;
+        sfxTimer[CH_ENEMY] = 30;
+        sfxFreq[CH_ENEMY] = 3000;
+        sfxVol[CH_ENEMY] = 0x38;
+        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x20); /* Rising pitch sweep */
         break;
 
     default:
@@ -178,6 +246,23 @@ void audioPlaySource(int8_t source) {
 
 /* Service audio every frame (60Hz vsync hook) */
 void audioServiceAudio(void) {
+    if (pcmActive) {
+        if (pcmOffset < PCM_START_LEN) {
+            uint16_t target = pcmOffset + 140;
+            if (target > PCM_START_LEN) target = PCM_START_LEN;
+            vera_set_addr(VERA_INC_BANK0, (uint16_t)(0x2000 + pcmOffset));
+            while (pcmOffset < target && !(VERA_PCM_CTRL_REG & 0x80)) {
+                VERA_PCM_DATA_REG = VERA.data0;
+                pcmOffset++;
+            }
+        } else {
+            pcmActive = 0;
+            VERA_PCM_RATE_REG = 0;
+            VERA_PCM_CTRL_REG = 0x80;
+            VERA_PCM_CTRL_REG = 0x00; /* Silence PCM */
+            activePlaying = -1;
+        }
+    }
     /* Channel 0: Player Laser decay & frequency sweep */
     if (sfxTimer[CH_PLAYER]) {
         sfxTimer[CH_PLAYER]--;
@@ -201,9 +286,10 @@ void audioServiceAudio(void) {
                 if (sfxFreq[CH_ENEMY] > 100) sfxFreq[CH_ENEMY] -= 90;
                 psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x20);
             } else if (sfxType[CH_ENEMY] == 3) {
-                /* Bass rumble decay */
-                if (sfxVol[CH_ENEMY] >= 2) sfxVol[CH_ENEMY] -= 2;
-                psg_write(CH_ENEMY, 70, 0xC0 | sfxVol[CH_ENEMY], 0x80);
+                /* Big explosion bass rumble: descend from 1800 down to 100Hz */
+                if (sfxFreq[CH_ENEMY] > 120) sfxFreq[CH_ENEMY] -= 36;
+                if (sfxVol[CH_ENEMY] >= 1) sfxVol[CH_ENEMY] -= 1;
+                psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x40);
             } else {
                 if (sfxVol[CH_ENEMY] >= 8) sfxVol[CH_ENEMY] -= 8;
                 psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x40);
@@ -211,13 +297,15 @@ void audioServiceAudio(void) {
         }
     }
 
-    /* Channel 2: Explosions (Noise decay) */
+    /* Channel 2: Explosions — noise burst with freq+vol sweep */
     if (sfxTimer[CH_EXPL]) {
         sfxTimer[CH_EXPL]--;
         if (sfxTimer[CH_EXPL] == 0) {
             psg_silence(CH_EXPL);
         } else {
-            uint8_t step = (sfxType[CH_EXPL] == 2) ? 2 : 4;
+            /* Rapid descending freq sweep — gives classic arcade explosion 'bwoosh' */
+            if (sfxFreq[CH_EXPL] > 120) sfxFreq[CH_EXPL] -= (sfxType[CH_EXPL] == 2) ? 80 : 120;
+            uint8_t step = (sfxType[CH_EXPL] == 2) ? 1 : 3;
             if (sfxVol[CH_EXPL] >= step) sfxVol[CH_EXPL] -= step;
             psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0);
         }
@@ -239,6 +327,14 @@ void audioServiceAudio(void) {
                     sfxFreq[CH_PICKUP] = 1289; /* G5 */
                     psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
                 }
+            } else if (sfxType[CH_PICKUP] == 2) {
+                /* Coin drop metallic dual-tone ding: 1560Hz -> 920Hz */
+                if (sfxTimer[CH_PICKUP] == 14) {
+                    sfxFreq[CH_PICKUP] = 920;
+                    psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | 0x3C, 0x10);
+                }
+                if (sfxVol[CH_PICKUP] >= 3) sfxVol[CH_PICKUP] -= 3;
+                psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x10);
             } else if (sfxType[CH_PICKUP] == 4) {
                 /* Fanfare steps */
                 if (sfxTimer[CH_PICKUP] == 16) {
