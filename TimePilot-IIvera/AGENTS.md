@@ -33,7 +33,46 @@ These constraints drive most architectural decisions. They are hard limits.
 ### 1. ProDOS 2.4.3 Safe Memory Map & Standard `$1400` Load Address
 - **Standard ProDOS BIN Load Base (`$1400`)**: In ProDOS 2.4.3 / BASIC.SYSTEM, when executing `BRUN`, `$1000–$12FF` is used by ProDOS QUIT code, and `$1300–$13FF` is BASIC.SYSTEM scratch space. Therefore, `MAIN.BIN` loads cleanly at **`$1400`**.
 - **ProDOS Buffer Ceiling (`$9600`)**: ProDOS file buffers grow downward from `$BF00` to `$9600`. Any binary extending to `$9600` or above triggers the fatal `NO BUFFERS AVAILABLE` error during `BRUN`. The maximum safe program ceiling is `$95FF` (maximum size 33,280 bytes from `$1400`).
-- **`-Oz` Extreme Optimization & Current Footprint**: `MAIN.BIN` and `MAIN4.BIN` are compiled with **`-Oz`** down to **28,056 bytes** (spans **`$1400–$8198`**), providing **over 5.2 KB of verified safe headroom** strictly below the `$9600` buffer boundary without `NO BUFFERS AVAILABLE` and 100% free of memory corruption! Art, audio, and demo live on HDV and are streamed via MLI `$80`.
+- **Footprint & Verified Safe Headroom**: `MAIN.BIN` and `MAIN4.BIN` are compiled with **`-Oz`** down to **29,563 bytes** (`$1400..$877B`), providing **3,716 bytes of verified safe headroom** strictly below the `$9600` buffer boundary without `NO BUFFERS AVAILABLE` and 100% free of memory corruption! Art, audio, and demo live on HDV and are streamed via MLI `$80`.
+
+#### Apple II 64KB System RAM Architecture Map
+```text
+$0000 ┌────────────────────────────────────────────────────────┐
+      │ $0000 - $00FF : 6502 Zero Page (llvm-mos 指標、ProDOS 暫存)│
+$0100 ├────────────────────────────────────────────────────────┤
+      │ $0100 - $01FF : 6502 硬體堆疊 (Hardware Stack)          │
+$0200 ├────────────────────────────────────────────────────────┤
+      │ $0200 - $02FF : 鍵盤輸入緩衝區 (Keyboard Input Buffer) │
+$0300 ├────────────────────────────────────────────────────────┤
+      │ $0300 - $03FF : 向量中斷表 / ProDOS MLI 呼叫介面 ($03F8)│
+$0400 ├────────────────────────────────────────────────────────┤
+      │ $0400 - $07FF : Apple II Text Page 1 螢幕文字頁面       │
+$0800 ├────────────────────────────────────────────────────────┤
+      │ $0800 - $0FFF : Applesoft BASIC 空間 (`STARTUP` 執行區) │
+$1000 ├────────────────────────────────────────────────────────┤
+      │ $1000 - $12FF : ProDOS QUIT 代碼保留區                  │
+$1300 ├────────────────────────────────────────────────────────┤
+      │ $1300 - $13FF : BASIC.SYSTEM Scratch 暫存保留區        │
+$1400 ├────────────────────────────────────────────────────────┤
+      │                                                        │
+      │   Time Pilot IIvera 主程式核心 (`MAIN.BIN` / `MAIN4`)  │
+      │   載入基底: $1400 ── 結束於: $877B (29,563 Bytes)       │
+      │   (含全遊戲狀態機、極速八分圓解角器、雙模式輸入引擎)    │
+      │                                                        │
+$877C ├────────────────────────────────────────────────────────┤
+      │   安全記憶體緩衝區 (Safe Free Headroom: 3,716 Bytes)    │
+$9600 ├────────────────────────────────────────────────────────┤
+      │ $9600 - $BEFF : ProDOS 檔案緩衝區 (向下增長界限)       │
+$BF00 ├────────────────────────────────────────────────────────┤
+      │ $BF00 - $BFFF : ProDOS 全域頁面 (Global Page)          │
+$C000 ├────────────────────────────────────────────────────────┤
+      │ $C000 - $CFFF : Apple II I/O Softswitches & Slot 空間  │
+      │                 ($C200 / $C400: VERA FPGA 暫存器映射)  │
+$D000 ├────────────────────────────────────────────────────────┤
+      │ $D000 - $FFFF : 16KB 語言卡 (Language Card RAM)        │
+      │                 (ProDOS 核心常駐與中斷向量)            │
+      └────────────────────────────────────────────────────────┘
+```
 
 ### 2. apple2ts palette rendering is **4-bit-per-channel** (RRRR GGGG BBBB)
 CX16's `colorPalette[]` values (`0x0F00` red, `0x0FFF` white, `0x00C0` green, …) are the
@@ -61,25 +100,36 @@ apple2ts sets each frame and clears on write. This makes timed sequences (stage 
 STAGE CLEAR banner, explosions) a **true** number of frames regardless of CPU speed setting.
 Do NOT replace this with a busy-wait `delay()` — that made the stage announce take 15–20 s.
 
-### 6. Sprite memory budget (VERA bank 1 pattern RAM)
-| Pattern | Address (bank 1) | Size |
-|--------|------------------|------|
-| Player 32 frames | `0x8000` | 8 KB |
-| Enemy 16 frames | `0xA000` | 4 KB |
-| Boss 16 frames | `0xB000` | 4 KB |
-| Explosion 4 frames | `0xC000` | 1 KB |
-| Bullet / enemy bullet | `0xC400` / `0xC440` | 64 B each |
-| Cloud 0 / Astro 0 (16x16) | `0xC480` | 256 B |
-| Cloud 1 / Astro 1 (32x16) | `0xC580` | 512 B |
-| Cloud 2 / Astro 2 (64x16 / 32x16) | `0xC780` | 1 KB |
-| Parachute 4 frames (16x16) | `0xCC00` | 1 KB |
-| Stage Weapons / Logo Time | `0xD000` | 2 KB |
-| 1940 Bomber / Logo Pilot | `0xD800` | 2 KB |
-| Score numbers popup (1000..5000) | `0xE000` | 1.5 KB |
-| Big Explosion 32x16 (4 frames) | `0xE800` | 2 KB |
-| Font tiles (128) + SOLID_BLOCK(127) | `0xF000` | 1 KB |
-| Palette | `0xFA00` | 512 B |
-| Sprite attrs | `0xFC00` | 1 KB |
+### 6. VERA 128KB Dual-Bank VRAM Memory Map
+
+#### 🔹 VRAM Bank 0 (64 KB) — 狀態列文字地圖與主音訊
+| 位址範圍 | 佔用大小 | 功能用途與內容說明 |
+| :--- | :---: | :--- |
+| **`$00000 - $007FF`** | 2,048 B | **Layer 0 狀態欄文字地圖**：40×30 16 色文字模式（T256C=0），右側 12 欄純黑邊欄與分數排版。 |
+| **`$00800 - $00FFF`** | 2,048 B | 系統預留與調度緩衝區。 |
+| **`$01000 - $0DB85`** | 52,102 B | **PCM 音效 1**：`AUDIO_GAME_START`（8.05 秒正宗街機完整開場曲）。 |
+| **`$0DB86 - $0FE57`** | 8,914 B | **PCM 音效 2**：`AUDIO_BIG_EXPLOSION`（1.38 秒正宗大型電玩重低音大爆炸）。 |
+| **`$0FE58 - $0FFFF`** | **424 B** | **Bank 0 安全空餘區**（完全避開暫存器映照邊界）。 |
+
+#### 🔸 VRAM Bank 1 (64 KB) — 特技音效、精靈圖庫、PSG 與調色盤
+| 位址範圍 | 佔用大小 | 功能用途與內容說明 |
+| :--- | :---: | :--- |
+| **`$10000 - $127FF`** | 10,240 B | 系統保留區。 |
+| **`$12800 - $17615`** | **19,990 B**| **PCM Bank 1 音訊常駐區（9 組街機特技取樣）**：<br>• `$12800`: `COINDROP` 投幣音 (2,889 B)<br>• `$13349`: `ROCKET_FLY` 飛彈蜂鳴 (1,945 B)<br>• `$13AE2`: `BOSSL0` 飛艇引擎 (1,208 B)<br>• `$13F9A`: `BOSSL1` 轟炸機警報 (3,348 B)<br>• `$14CAE`: `BOSSL2` 直升機警報 (1,039 B)<br>• `$150BD`: `BOSSL3` 超音速警報 (1,254 B)<br>• `$155A3`: `BOMB` 航彈呼嘯 (3,867 B)<br>• `$164BE`: `ROCKET_LAUNCH` 飛彈發射 (2,223 B)<br>• `$16D6D`: `WAVE_START` 編隊突襲 (2,217 B) |
+| **`$17616 - $17FFF`** | **2,538 B** | **Bank 1 音訊/圖形安全隔離緩衝區**（保證音訊絕不侵犯圖案 RAM）。 |
+| **`$18000 - $19FFF`** | 8,192 B | **玩家戰機圖庫**：32 方位 16×16 戰機圖案（每格 256B，共 32 影格）。 |
+| **`$1A000 - $1AFFF`** | 4,096 B | **敵機圖庫**：1910～2001 四大時代敵機（每時代 4 影格，共 16 影格）。 |
+| **`$1B000 - $1BFFF`** | 4,096 B | **巨型母艦 Boss 圖庫**：齊柏林飛艇、重轟炸機、CH-47 直升機、B-52、外星母艦。 |
+| **`$1C000 - $1C3FF`** | 1,024 B | **爆炸圖庫**：標準 16×16 爆破 4 影格。 |
+| **`$1C400 - $1C7FF`** | 1,024 B | 子彈（`bullet`）、敵彈（`ebullet`）、小雲、中雲（16×16、32×16）。 |
+| **`$1C800 - $1CFFF`** | 2,048 B | 大雲（64×16）、跳傘飛行員 4 影格搖曳動畫、太空隕石（`astro0/1/2`）。 |
+| **`$1D000 - $1DFFF`** | 4,096 B | 1940 巨型轟炸機（`l1bomber` 32×16）、飛彈、迴力鏢、炸彈、脈衝光球。 |
+| **`$1E000 - $1E7FF`** | 2,048 B | 浮動計分數字精靈（`1000`、`1500`、`2000`、`3000`、`4000`、`5000`）。 |
+| **`$1E800 - $1EFFF`** | 2,048 B | **巨大 32×16 連環烈焰爆炸 4 影格**（`expl32x16`）。 |
+| **`$1F000 - $1F7FF`** | 2,048 B | 8×8 街機字型（128 字元）+ 全黑遮罩實心磚瓦（Index 127）。 |
+| **`$1F9C0 - $1F9FF`** | **64 B**  | **VERA 16 聲道立體聲 PSG 暫存器空間**（每聲道 4 bytes）。 |
+| **`$1FA00 - $1FBFF`** | **512 B** | **256 色調色盤 (Palette)**：12-bit RGB（每色 2 bytes，支援動態螺旋槳輪色）。 |
+| **`$1FC00 - $1FFFF`** | **1,024 B**| **128 個硬體精靈屬性表 (Sprite Attributes)**：每精靈 8 bytes。 |
 
 ---
 
@@ -128,15 +178,32 @@ STAGE CLEAR keeps reappearing.
 - **Slot-Relative VERA PCM Hardware (`$1B / $1C / $1D`)**:
   - Direct register writes to `VERA_PCM_CTRL_REG` (`$1B`), `VERA_PCM_RATE_REG` (`$1C`), `VERA_PCM_DATA_REG` (`$1D`).
   - Pre-buffers up to 2,048 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~140 bytes per 60Hz vsync hook.
-- **16-Channel PSG Polyphonic Chiptune Synthesis**:
-  - Action sounds (player laser, enemy bullets, explosions, rescues) run on pure hardware PSG at `$1F9C0..$1F9FF`.
-  - **Dual-Voice Unison Laser (Channels 0 & 4)**: 50% pulse + 25% pulse unison doubling acoustic power (+6 dB) with 4-frame attack hold.
-  - **Dual-Voice Explosions (Channels 2 & 5)**: High-frequency white noise sweep paired with low-frequency sawtooth rumble for heavy arcade punch.
-- **Dynamic Master Volume Hierarchy**:
-  - Boss background sirens (`BOSSL0..3`): Volume 7/15 (~47%) — creates tension without masking player fire.
-  - Missiles & Bombs (`ROCKET_LAUNCH`, `BOMB`, `WAVE_START`): Volume 10/15.
-  - Opening theme & Coin drop (`GAME_START`, `COINDROP`): Volume 11/15.
-  - Giant Explosion (`BIG_EXPLOSION`): Volume 13/15.
+
+### 🔊 1. VERA 16-Channel PSG Voice Allocation Table
+| 聲道配置 | 音效代號 | 觸發事件 | 波形設計與音量包絡 |
+| :--- | :--- | :--- | :--- |
+| **Channel 0 & 4**<br>(雙聲道齊奏) | **`AUDIO_PLAYER_SHOOT`** | 玩家按鍵 / 搖桿開火 | **雙聲道同度齊奏 (+6 dB 爆發力)**：<br>• Ch 0：50% 方波（1600Hz ➔ 800Hz 快速降頻）<br>• Ch 4：25% 方波次音微調齊奏<br>• 前 4 幀鎖定最大音量 `0x3F`，槍聲乾脆紮實！ |
+| **Channel 2 & 5**<br>(雙聲道爆破) | **`AUDIO_ENEMY_EXPLODE`**<br>`AUDIO_WAPON_EXPLODE` | 擊落小兵敵機 / 攔截飛彈 | **高低頻雙波形爆破**：<br>• Ch 2：白噪音高速降頻掃頻（炸裂金屬破片感）<br>• Ch 5：鋸齒波低頻重低音震波（50Hz 下潛）<br>• 22 幀厚重打擊感，擊落再多小兵也不吞音！ |
+| **Channel 1** | **`AUDIO_ENEMY_SHOOT`** | 1910 小兵 / 各關 Boss 開火 | 鋸齒波短促警示啾啾聲（950Hz，Vol `0x3F` 全開）。 |
+| **Channel 3** | **`AUDIO_PICKUP`** | 碰觸救援跳傘飛行員 | 快樂上升三音階琶音（C5 860Hz ➔ E5 1084Hz ➔ G5 1289Hz，滿音量 `0x3F`）。 |
+| **Channel 3** | **`AUDIO_EXTRA_LIFE`** | 得分達 10,000 / +50,000 | 凱旋三響號角 fanfare（E5 1084Hz，滿音量 `0x3F`）。 |
+| **Channel 0 & 3** | **`AUDIO_NEXT_LEVEL`** | 通關過渡慶祝 | A4 + C5 雙音雙聲道和弦（1.6 秒短暫慶祝）。 |
+| **Channel 2 & 3** | **`AUDIO_TIMEWARP`** | 22 步曲速躍遷光束 | Ch 3 空間升頻嘯叫（250Hz ➔ 2500Hz）+ Ch 2 推進白噪音。 |
+
+### 🎙️ 2. Dual-Bank VRAM Resident 11-Sample PCM Table
+| VRAM 位址 | 音效名稱 | 檔案代號 | 規格大小 | 播放長度 | 動態音量 | 遊戲角色與特點 |
+| :---: | :--- | :--- | :---: | :---: | :---: | :--- |
+| **Bank 0** | **`AUDIO_GAME_START`** | `game_start.pcm` | 52,102 B | 8.05 秒 | **Vol 11/15** | 1982 街機完整開場曲，宣告期間戰機雲朵全動態飛行！ |
+| **Bank 0** | **`AUDIO_BIG_EXPLOSION`** | `big_explosion.pcm` | 8,914 B | 1.38 秒 | **Vol 13/15** | 玩家陣亡墜毀、Boss 擊墜、二戰轟炸機爆炸時震撼引爆！ |
+| **Bank 1** | **`AUDIO_COINDROP`** | `coindrop.pcm` | 2,889 B | 0.45 秒 | **Vol 11/15** | 街機原版投幣金屬叮噹聲。 |
+| **Bank 1** | **`AUDIO_WAVE_START`** | `wave_start.pcm` | 2,217 B | 0.34 秒 | **Vol 10/15** | 4 機編隊突襲進場空襲警報。 |
+| **Bank 1** | **`AUDIO_BOMB`** | `bomb.pcm` | 3,867 B | 0.60 秒 | **Vol 10/15** | 1940 巨型轟炸機垂直空投炸彈下墜呼嘯破空聲。 |
+| **Bank 1** | **`AUDIO_ROCKET_LAUNCH`**| `rocket_launch.pcm`| 2,223 B | 0.34 秒 | **Vol 10/15** | 1970/1982 追尾導向飛彈點火呼嘯發射。 |
+| **Bank 1** | **`AUDIO_ROCKET_FLY`** | `rocket_fly.pcm` | 1,945 B | 0.30 秒 (循環)| **Vol 7/15** | 飛彈巡航追蹤蜂鳴（適度柔化不喧賓奪主）。 |
+| **Bank 1** | **`AUDIO_BOSSL0`** | `bossl0.pcm` | 1,208 B | 0.19 秒 (循環)| **Vol 7/15** | 1910 齊柏林飛艇巨型發動機深沉轟鳴。 |
+| **Bank 1** | **`AUDIO_BOSSL1`** | `bossl1.pcm` | 3,348 B | 0.52 秒 (循環)| **Vol 7/15** | 1940 四引擎重轟炸機首領旗艦警報。 |
+| **Bank 1** | **`AUDIO_BOSSL2`** | `bossl2.pcm` | 1,039 B | 0.16 秒 (循環)| **Vol 7/15** | 1970 雙旋翼直升機巨型母艦空襲長鳴。 |
+| **Bank 1** | **`AUDIO_BOSSL3`** | `bossl3.pcm` | 1,254 B | 0.19 秒 (循環)| **Vol 7/15** | 1982 超音速戰略轟炸機首領防空警報。 |
 
 ---
 
