@@ -854,7 +854,8 @@ static void spawn_enemy(void) {
             enemyTimer[i] = (uint16_t)(30 + ((i * 13) % 25));
             uint8_t eDims = enemy_dims();
             uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + (uint16_t)f * (eDims ? 256 : 64), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
+            uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
+            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff, (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
             return;
         }
     }
@@ -878,7 +879,8 @@ static void spawn_wave(void) {
             enemyTimer[i] = (uint16_t)(25 + count * 8);
             uint8_t eDims = enemy_dims();
             uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + (uint16_t)f * (eDims ? 256 : 64), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
+            uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
+            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff, (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
             count++;
             waveEnemiesAlive++;
             if (count >= 4) break;
@@ -935,15 +937,43 @@ static void spawn_boss(void) {
     }
 }
 
-/* Pick the direction index (0..31) whose velocity best matches (dx,dy). */
+/* Blazing-fast octant direction solver (0..31, 0=UP, 8=RIGHT, 16=DOWN, 24=LEFT).
+ * Replaces 32-iteration loop & 64 16-bit multiplications with instant comparisons. */
 static uint8_t frame_toward(int16_t dx, int16_t dy) {
-    uint8_t best = 0, k;
-    int16_t bestDot = -32768;
-    for (k = 0; k < 32; k++) {
-        int16_t dot = dx * (int16_t)velDx[k] + dy * (int16_t)velDy[k];
-        if (dot > bestDot) { bestDot = dot; best = k; }
+    if (dx == 0 && dy == 0) return 0;
+    int16_t ax = (dx < 0) ? -dx : dx;
+    int16_t ay = (dy < 0) ? -dy : dy;
+    while (ax > 240 || ay > 240) {
+        ax >>= 1;
+        ay >>= 1;
     }
-    return best;
+    uint8_t oct;
+    if (ay >= ax) {
+        /* North / South dominant: octants 0, 3, 4, 7 */
+        uint16_t num = (uint16_t)ax << 8;
+        uint8_t step = (num < (uint16_t)ay * 25) ? 0 :
+                       (num < (uint16_t)ay * 78) ? 1 :
+                       (num < (uint16_t)ay * 137) ? 2 :
+                       (num < (uint16_t)ay * 210) ? 3 : 4;
+        if (dy < 0) {
+            oct = (dx >= 0) ? step : (32 - step);
+        } else {
+            oct = (dx >= 0) ? (16 - step) : (16 + step);
+        }
+    } else {
+        /* East / West dominant: octants 1, 2, 5, 6 */
+        uint16_t num = (uint16_t)ay << 8;
+        uint8_t step = (num < (uint16_t)ax * 25) ? 0 :
+                       (num < (uint16_t)ax * 78) ? 1 :
+                       (num < (uint16_t)ax * 137) ? 2 :
+                       (num < (uint16_t)ax * 210) ? 3 : 4;
+        if (dx >= 0) {
+            oct = (dy < 0) ? (8 - step) : (8 + step);
+        } else {
+            oct = (dy < 0) ? (24 + step) : (24 - step);
+        }
+    }
+    return (uint8_t)(oct & 31);
 }
 
 /* ------------------------- Update ------------------------- */
@@ -1156,8 +1186,8 @@ static void update_game(void) {
                 int16_t rdx = (int16_t)playerX - (int16_t)ebX[i];
                 int16_t rdy = (int16_t)playerY - (int16_t)ebY[i];
                 uint8_t a = frame_toward(rdx, rdy);
-                bx = (int16_t)ebX[i] + (int16_t)velDx[a] * 3 / 4 + scrollDx;
-                by = (int16_t)ebY[i] + (int16_t)velDy[a] * 3 / 4 + scrollDy;
+                bx = (int16_t)ebX[i] + ((int16_t)velDx[a] >> 1) + scrollDx;
+                by = (int16_t)ebY[i] + ((int16_t)velDy[a] >> 1) + scrollDy;
                 set_sprite_pat(SPR_EBULLET_BASE + i, PAT_WEAPON + (uint16_t)(a >> 1) * 256);
             } else if (stage == 4) {
                 bx = (int16_t)ebX[i] + ebVX[i] + scrollDx;
@@ -1208,14 +1238,13 @@ static void update_game(void) {
                 }
                 /* Update sprite rotation frame */
                 uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-                set_sprite_pat(SPR_ENEMY_BASE + i, PAT_ENEMY + (uint16_t)f * (eDims ? 256 : 64));
+                uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
+                set_sprite_pat(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff);
             }
 
-            /* 2. Move with world scroll + enemy's OWN engine thrust (speed ~5 px/frame) */
-            int16_t thrustX = ((int16_t)velDx[enemyFacing[i]] * 5) / 4;
-            int16_t thrustY = ((int16_t)velDy[enemyFacing[i]] * 5) / 4;
-            int16_t ex = enemyX[i] + scrollDx + thrustX;
-            int16_t ey = enemyY[i] + scrollDy + thrustY;
+            /* 2. Move with world scroll + enemy's OWN engine thrust */
+            int16_t ex = enemyX[i] + scrollDx + (int16_t)velDx[enemyFacing[i]];
+            int16_t ey = enemyY[i] + scrollDy + (int16_t)velDy[enemyFacing[i]];
 
             /* 3. Off-screen tolerance: only despawn after drifting far off */
             if (ex < -32 || ex > 240 || ey < -32 || ey > 260) {
@@ -1406,39 +1435,43 @@ static void update_game(void) {
             int16_t bx = (int16_t)bulletX[i], by = (int16_t)bulletY[i];
             for (uint8_t j = 0; j < NUM_ENEMIES; j++) {
                 if (enemyOn[j] && enemyBoom[j] == 0) {
-                    int16_t ex = (int16_t)enemyX[j], ey = (int16_t)enemyY[j];
-                    if (bx + 8 > ex && bx < ex + eW && by + 8 > ey && by < ey + eW) {
-                        enemyBoom[j] = 8;
-                        set_sprite_pat(SPR_ENEMY_BASE + j, PAT_EXPL);
-                        bulletOn[i] = 0;
-                        hide_sprite(SPR_BULLET_BASE + i);
+                    int16_t ddx = bx - enemyX[j];
+                    if ((uint16_t)(ddx + 7) < (uint16_t)(eW + 7)) {
+                        int16_t ddy = by - enemyY[j];
+                        if ((uint16_t)(ddy + 7) < (uint16_t)(eW + 7)) {
+                            int16_t ex = enemyX[j], ey = enemyY[j];
+                            enemyBoom[j] = 8;
+                            set_sprite_pat(SPR_ENEMY_BASE + j, PAT_EXPL);
+                            bulletOn[i] = 0;
+                            hide_sprite(SPR_BULLET_BASE + i);
 
-                        /* Multiplier scoring: 100 -> 200 -> 300 -> 400 */
-                        if (killTimer >= 30) {
-                            killMultiplier = 1;
-                        }
-                        killTimer = 0;
-                        score += (uint32_t)killMultiplier * 100;
-                        if (killMultiplier < 4) killMultiplier++;
-                        enemiesKilled++;
-                        check_extra_life();
-                        audioPlaySource(AUDIO_ENEMY_EXPLODE);
+                            /* Multiplier scoring: 100 -> 200 -> 300 -> 400 */
+                            if (killTimer >= 30) {
+                                killMultiplier = 1;
+                            }
+                            killTimer = 0;
+                            score += (uint32_t)killMultiplier * 100;
+                            if (killMultiplier < 4) killMultiplier++;
+                            enemiesKilled++;
+                            check_extra_life();
+                            audioPlaySource(AUDIO_ENEMY_EXPLODE);
 
-                        /* Wave Squadron wipeout bonus */
-                        if (enemyWave[j]) {
-                            enemyWave[j] = 0;
-                            if (waveEnemiesAlive > 0) {
-                                waveEnemiesAlive--;
-                                if (waveEnemiesAlive == 0) {
-                                    /* 4-plane wave wiped out! 2000 pts bonus! */
-                                    score += 2000;
-                                    check_extra_life();
-                                    popupOn = 1; popupX = ex; popupY = ey; popupFrame = 2; popupTimer = 45; /* "2000" frame */
-                                    audioPlaySource(AUDIO_PICKUP);
+                            /* Wave Squadron wipeout bonus */
+                            if (enemyWave[j]) {
+                                enemyWave[j] = 0;
+                                if (waveEnemiesAlive > 0) {
+                                    waveEnemiesAlive--;
+                                    if (waveEnemiesAlive == 0) {
+                                        /* 4-plane wave wiped out! 2000 pts bonus! */
+                                        score += 2000;
+                                        check_extra_life();
+                                        popupOn = 1; popupX = ex; popupY = ey; popupFrame = 2; popupTimer = 45; /* "2000" frame */
+                                        audioPlaySource(AUDIO_PICKUP);
+                                    }
                                 }
                             }
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -1467,8 +1500,7 @@ static void update_game(void) {
         for (i = 0; i < NUM_EBULLETS; i++) {
             if (ebOn[i]) {
                 int16_t bx = (int16_t)ebX[i], by = (int16_t)ebY[i];
-                if (bx + 8 > playerX && bx < playerX + 16 &&
-                    by + 8 > playerY && by < playerY + 16) {
+                if ((uint16_t)(bx - 97) < 23 && (uint16_t)(by - 113) < 23) {
                     ebOn[i] = 0;
                     hide_sprite(SPR_EBULLET_BASE + i);
                     lose_life();
@@ -1478,13 +1510,15 @@ static void update_game(void) {
         }
         for (i = 0; i < NUM_ENEMIES; i++) {
             if (enemyOn[i] && enemyBoom[i] == 0) {
-                int16_t ex = (int16_t)enemyX[i], ey = (int16_t)enemyY[i];
-                if (ex + eW > playerX && ex < playerX + 16 &&
-                    ey + eW > playerY && ey < playerY + 16) {
-                    enemyBoom[i] = 8;
-                    set_sprite_pat(SPR_ENEMY_BASE + i, PAT_EXPL);
-                    lose_life();
-                    break;
+                int16_t dex = enemyX[i] - (int16_t)playerX;
+                if ((uint16_t)(dex + eW - 1) < (uint16_t)(15 + eW)) {
+                    int16_t dey = enemyY[i] - (int16_t)playerY;
+                    if ((uint16_t)(dey + eW - 1) < (uint16_t)(15 + eW)) {
+                        enemyBoom[i] = 8;
+                        set_sprite_pat(SPR_ENEMY_BASE + i, PAT_EXPL);
+                        lose_life();
+                        break;
+                    }
                 }
             }
         }
