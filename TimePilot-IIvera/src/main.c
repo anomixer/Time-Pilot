@@ -286,8 +286,20 @@ static void load_palette(void) {
 static void set_stage_palette(void) {
     uint16_t c = colorPaletteSky[stage];
     vera_set_addr(VERA_INC_BANK1, PALETTE_ADDR);
-    VERA.data0 = c & 0xff;
-    VERA.data0 = c >> 8;
+    VERA.data0 = (uint8_t)(c & 0xff);
+    VERA.data0 = (uint8_t)(c >> 8);
+
+    /* Sprite palette index 14 (palette row 1, offset 32 + 14*2 = 60).
+     * Stage 4 (A.D. 2001 Space UFO): Cyan (0x00CF) for UFO domes, lights, and mothership core.
+     * Stages 0..3: Sky color for transparent propeller blend. */
+    vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 32 + 14 * 2));
+    if (stage == 4) {
+        VERA.data0 = 0xCF;
+        VERA.data0 = 0x00;  /* 0x00CF = Cyan */
+    } else {
+        VERA.data0 = (uint8_t)(c & 0xFF);
+        VERA.data0 = (uint8_t)(c >> 8);
+    }
 }
 
 /* Set palette entry 0 to solid black for Title & Attract screens (matches cx16-1.jpg) */
@@ -732,6 +744,23 @@ static void update_propeller(void) {
             VERA.data0 = (uint8_t)(colorPaletteProps[stage] >> 8);
             VERA.data0 = (uint8_t)(colorPaletteSky[stage] & 0xFF);
             VERA.data0 = (uint8_t)(colorPaletteSky[stage] >> 8);
+        }
+    } else if (stage == 4) {
+        /* Stage 4 Space Mothership: pulsate colors between Cyan and Magenta when damaged */
+        if (bossOn && bossHp <= (BOSS_HP * 2) / 3) {
+            if (!(frameCount & 7)) {
+                propState ^= 1;
+                vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 32 + 14 * 2));
+                if (propState) {
+                    VERA.data0 = 0xCF; VERA.data0 = 0x00; /* 0x00CF: Cyan */
+                } else {
+                    VERA.data0 = 0x0C; VERA.data0 = 0x0C; /* 0x0C0C: Magenta */
+                }
+            }
+        } else if ((frameCount & 31) == 0) {
+            /* Keep steady Cyan when undamaged or no boss */
+            vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 32 + 14 * 2));
+            VERA.data0 = 0xCF; VERA.data0 = 0x00;
         }
     }
 }
