@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include "apple2e.h"
 #include "audio.h"
+#include "audio_table.h"
 
 #define PSG_BASE 0xF9C0   /* in VRAM Bank 1: $1F9C0 */
 
@@ -52,7 +53,7 @@ static void psg_silence(uint8_t ch) {
 #define VERA_PCM_RATE_REG (*(volatile uint8_t *)(VERA_BASE + 0x1C))
 #define VERA_PCM_DATA_REG (*(volatile uint8_t *)(VERA_BASE + 0x1D))
 
-#define PCM_START_LEN 57258
+#define PCM_START_LEN PCM_TOTAL_BYTES
 static uint8_t  pcmActive = 0;
 static uint16_t pcmOffset = 0;
 
@@ -114,9 +115,9 @@ void audioPlaySource(int8_t source) {
         }
         pcmOffset = 3000;
 
-        /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 21 (~8010 Hz) */
+        /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 18 (~6866 Hz) */
         VERA_PCM_CTRL_REG = 0x0F; /* Mono, 8-bit, Vol 15 */
-        VERA_PCM_RATE_REG = 21;   /* 8,010 Hz */
+        VERA_PCM_RATE_REG = VERA_PCM_RATE; /* 6,866 Hz */
         break;
 
     case AUDIO_NEXT_LEVEL:
@@ -240,17 +241,18 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_TIMEWARP:
-        /* Time warp whoosh: rising then fading noise sweep */
+        /* Time warp ascending pitch sweep + space whoosh */
+        sfxType[CH_PICKUP] = 5;
+        sfxTimer[CH_PICKUP] = 80;
+        sfxFreq[CH_PICKUP] = 250;
+        sfxVol[CH_PICKUP] = 0x3F;
+        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
+
         sfxType[CH_EXPL] = 1;
-        sfxTimer[CH_EXPL] = 30;
-        sfxFreq[CH_EXPL] = 800;
-        sfxVol[CH_EXPL] = 0x3F;
-        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* White Noise whoosh */
-        sfxType[CH_ENEMY] = 2;
-        sfxTimer[CH_ENEMY] = 30;
-        sfxFreq[CH_ENEMY] = 3000;
-        sfxVol[CH_ENEMY] = 0x38;
-        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x20); /* Rising pitch sweep */
+        sfxTimer[CH_EXPL] = 60;
+        sfxFreq[CH_EXPL] = 1000;
+        sfxVol[CH_EXPL] = 0x38;
+        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0);
         break;
 
     default:
@@ -269,7 +271,8 @@ void audioServiceAudio(void) {
                 VERA_PCM_DATA_REG = VERA.data0;
                 pcmOffset++;
             }
-        } else {
+        } else if (VERA_PCM_CTRL_REG & 0x40) {
+            /* FIFO completely drained — full audio track finished playing naturally */
             pcmActive = 0;
             VERA_PCM_RATE_REG = 0;
             VERA_PCM_CTRL_REG = 0x80;
@@ -358,6 +361,10 @@ void audioServiceAudio(void) {
                     sfxFreq[CH_PICKUP] = 1289;
                     psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | 0x3F, 0x20);
                 }
+            } else if (sfxType[CH_PICKUP] == 5) {
+                /* Time warp ascending pitch sweep: 250Hz -> 2500Hz */
+                if (sfxFreq[CH_PICKUP] < 2500) sfxFreq[CH_PICKUP] += 30;
+                psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
             }
         }
     }

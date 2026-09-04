@@ -16,13 +16,14 @@ const BLOCK_SIZE = 512
 const VRAM_AUDIO_BASE = 0x2000  // Bank 0 offset where audio blob is uploaded
 const VRAM_AUDIO_LIMIT = 57344  // $02000..$0FFFF is 56KB
 
-// Target rate: ~8010 Hz (VERA audio.rate = 21: 48828.125 * 21 / 128 = 8010.5 Hz)
+// Target rate: ~6866 Hz (VERA audio.rate = 18: 48828.125 * 18 / 128 = 6866.5 Hz)
+const VERA_PCM_RATE = 18
 const SRC_RATE = 12207
-const DST_RATE = 8010
+const DST_RATE = Math.round(48828.125 * VERA_PCM_RATE / 128)
 
 const SOURCES = [
   { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      maxSec: 0 },
-  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    maxSec: 7.13, tailSec: 0.02 },
+  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    maxSec: 8.05, tailSec: 0.0 },
   { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     maxSec: 0 },
   { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    maxSec: 0 },
   { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  maxSec: 0 },
@@ -138,7 +139,7 @@ let header = [
   "#include <stdint.h>",
   "typedef struct { uint16_t start; uint16_t length; uint8_t loops; } TpAudioData;",
   "#define NUM_AUDIO_SOURCES 20",
-  "#define VERA_PCM_RATE 21  // ~8010 Hz (25MHz/512 * 21/128)",
+  `#define VERA_PCM_RATE ${VERA_PCM_RATE}  // ~${DST_RATE} Hz (25MHz/512 * ${VERA_PCM_RATE}/128)`,
   `#define VRAM_AUDIO_BASE 0x${VRAM_AUDIO_BASE.toString(16).toUpperCase()}`,
   `#define PCM_START_BLOCK ${PCM_START_BLOCK}`,
   `#define PCM_TOTAL_BYTES ${total}`,

@@ -4,31 +4,31 @@
 #include <stdint.h>
 typedef struct { uint16_t start; uint16_t length; uint8_t loops; } TpAudioData;
 #define NUM_AUDIO_SOURCES 20
-#define VERA_PCM_RATE 21  // ~8010 Hz (25MHz/512 * 21/128)
+#define VERA_PCM_RATE 18  // ~6866 Hz (25MHz/512 * 18/128)
 #define VRAM_AUDIO_BASE 0x2000
 #define PCM_START_BLOCK 200
-#define PCM_TOTAL_BYTES 57258
-#define PCM_NUM_BLOCKS  112
+#define PCM_TOTAL_BYTES 55163
+#define PCM_NUM_BLOCKS  108
 
 static const TpAudioData audioData[NUM_AUDIO_SOURCES] = {
     { 0x2000, 0x0000, 0 }, // AUDIO_COINDROP
-    { 0x2000, 0xDFAA, 0 }, // AUDIO_GAME_START
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_HIGHSCORE
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_NEXT_LEVEL
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_PLAYER_SHOOT
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_ROCKET_FLY
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BOSSL0
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BOSSL1
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BOSSL2
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BOSSL3
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_WAPON_EXPLODE
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_ENEMY_EXPLODE
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_ENEMY_SHOOT
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BOMB
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_ROCKET_LAUNCH
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_PICKUP
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_EXTRA_LIFE
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_WAVE_START
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_BIG_EXPLOSION
-    { 0xFFAA, 0x0000, 0 }, // AUDIO_TIMEWARP
+    { 0x2000, 0xD77B, 0 }, // AUDIO_GAME_START
+    { 0xF77B, 0x0000, 0 }, // AUDIO_HIGHSCORE
+    { 0xF77B, 0x0000, 0 }, // AUDIO_NEXT_LEVEL
+    { 0xF77B, 0x0000, 0 }, // AUDIO_PLAYER_SHOOT
+    { 0xF77B, 0x0000, 0 }, // AUDIO_ROCKET_FLY
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BOSSL0
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BOSSL1
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BOSSL2
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BOSSL3
+    { 0xF77B, 0x0000, 0 }, // AUDIO_WAPON_EXPLODE
+    { 0xF77B, 0x0000, 0 }, // AUDIO_ENEMY_EXPLODE
+    { 0xF77B, 0x0000, 0 }, // AUDIO_ENEMY_SHOOT
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BOMB
+    { 0xF77B, 0x0000, 0 }, // AUDIO_ROCKET_LAUNCH
+    { 0xF77B, 0x0000, 0 }, // AUDIO_PICKUP
+    { 0xF77B, 0x0000, 0 }, // AUDIO_EXTRA_LIFE
+    { 0xF77B, 0x0000, 0 }, // AUDIO_WAVE_START
+    { 0xF77B, 0x0000, 0 }, // AUDIO_BIG_EXPLOSION
+    { 0xF77B, 0x0000, 0 }, // AUDIO_TIMEWARP
 };

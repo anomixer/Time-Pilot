@@ -295,10 +295,32 @@ static void set_black_palette(void) {
     VERA.data0 = 0x00;
 }
 
+/* Authentic CX16 time-warp beam tiles (tiles 22..31 in Bank 1 font RAM).
+ * Used by screen_time_warp() to draw the hyperspace beam across rows 14 & 15. */
+static const uint8_t warp_tiles[10][8] = {
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF }, /* Tile 22: bottom 1 line */
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF }, /* Tile 23: bottom 2 lines */
+    { 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF }, /* Tile 24: bottom 4 lines */
+    { 0x0F, 0x0F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, /* Tile 25: bottom 6 lines + top-right flare */
+    { 0xF0, 0xF0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, /* Tile 26: bottom 6 lines + top-left flare */
+    { 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, /* Tile 27: top 1 line */
+    { 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, /* Tile 28: top 2 lines */
+    { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00 }, /* Tile 29: top 4 lines */
+    { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x0F }, /* Tile 30: top 6 lines + bottom-right flare */
+    { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF0, 0xF0 }, /* Tile 31: top 6 lines + bottom-left flare */
+};
+
 static void load_font(void) {
     /* Clear first 32 tiles (0..31) */
     vera_set_addr(VERA_INC_BANK1, TILE_BASE);
     for (uint16_t b = 0; b < 256; b++) VERA.data0 = 0x00;
+    /* Upload 10 time-warp beam tiles into tiles 22..31 */
+    vera_set_addr(VERA_INC_BANK1, (uint16_t)(TILE_BASE + 22 * 8));
+    for (uint8_t t = 0; t < 10; t++) {
+        for (uint8_t r = 0; r < 8; r++) {
+            VERA.data0 = warp_tiles[t][r];
+        }
+    }
     /* Stream 96 glyphs from HDV art blob */
     upload_pattern_stream((uint16_t)(TILE_BASE + 32 * 8), ART_FONT8X8_OFF, 768);
     /* Tile 127: a SOLID block */
@@ -538,6 +560,102 @@ static void set_sprite_pat(uint8_t n, uint16_t pat) {
     vera_set_addr(VERA_INC_BANK1, base);
     VERA.data0 = lo;
     VERA.data0 = hi;
+}
+
+/* Authentic CX16 / Arcade hyperspace time-warp script.
+ * Triplet format: x, length, tile_f (followed by -1 to terminate each step). */
+static const int8_t timeWarpDrawScript[] = {
+    11,  6, 22, -1,
+     9, 10, 22, -1,
+     7, 14, 22, -1,
+     5, 18, 22, -1,
+     3, 22, 22, -1,
+     0, 28, 22, -1,
+     0, 28, 22,  9, 10, 23, -1,
+     0, 28, 22,  7, 14, 23, -1,
+     0, 28, 22,  5, 18, 23,  9, 10, 24, -1,
+     0, 28, 22,  3, 22, 23,  7, 14, 24, 13, 1, 25, 14, 1, 26, -1,
+     0, 28, 22,  3, 22, 23,  7, 14, 24, 13, 1, 25, 14, 1, 26, -1,
+     0, 28, 22,  3, 22, 23,  7, 14, 24, 13, 1, 25, 14, 1, 26, -1,
+     0, 28, 22,  3, 22, 23,  7, 14, 24, 13, 1, 25, 14, 1, 26, -1,
+     0, 28, 22,  5, 18, 23,  9, 10, 24, -1,
+     0, 28, 22,  7, 14, 23, -1,
+     0, 28, 22,  9, 10, 23, -1,
+     0, 28, 22, -1,
+     3, 22, 22, -1,
+     5, 18, 22, -1,
+     7, 14, 22, -1,
+     9, 10, 22, -1,
+    11,  6, 22, -1,
+    -1
+};
+
+static void screen_time_warp(void) {
+    int8_t x;
+    uint16_t i = 0;
+
+    /* Lock player plane horizontally facing right in center of playfield */
+    facing = 8;
+    set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
+
+    x = timeWarpDrawScript[0];
+    do {
+        while (x >= 0) {
+            i++;
+            int8_t l = timeWarpDrawScript[i++];
+            int8_t f = timeWarpDrawScript[i++];
+            while (l > 0) {
+                uint16_t off_top = (uint16_t)14 * 128 + (uint16_t)x * 2;
+                uint16_t off_bot = (uint16_t)15 * 128 + (uint16_t)x * 2;
+
+                /* Top row 14: character f, white foreground (9) on sky background (0) */
+                vera_set_addr(VERA_INC_BANK0, LAYER0_MAP + off_top);
+                VERA.data0 = (uint8_t)f;
+                VERA.data0 = 0x09;
+
+                /* Bottom row 15: character f + 5, white foreground (9) on sky background (0) */
+                vera_set_addr(VERA_INC_BANK0, LAYER0_MAP + off_bot);
+                VERA.data0 = (uint8_t)(f + 5);
+                VERA.data0 = 0x09;
+
+                l--;
+                x++;
+            }
+            x = timeWarpDrawScript[i];
+        }
+
+        /* Player plane ON (visible in beam) */
+        set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
+        waitvsync();
+        audioServiceAudio();
+        waitvsync();
+        audioServiceAudio();
+
+        /* Player plane OFF (pulsing flash) */
+        hide_sprite(SPR_PLAYER);
+
+        /* Erase row 14 & 15 back to sky across all 28 playfield columns */
+        for (uint8_t c = 0; c < 28; c++) {
+            uint16_t off_top = (uint16_t)14 * 128 + (uint16_t)c * 2;
+            uint16_t off_bot = (uint16_t)15 * 128 + (uint16_t)c * 2;
+            vera_set_addr(VERA_INC_BANK0, LAYER0_MAP + off_top);
+            VERA.data0 = 32;
+            VERA.data0 = 0x00;
+            vera_set_addr(VERA_INC_BANK0, LAYER0_MAP + off_bot);
+            VERA.data0 = 32;
+            VERA.data0 = 0x00;
+        }
+
+        waitvsync();
+        audioServiceAudio();
+        waitvsync();
+        audioServiceAudio();
+
+        i++;
+        x = timeWarpDrawScript[i];
+    } while (x >= 0);
+
+    hide_sprite(SPR_PLAYER);
 }
 
 static uint16_t get_cloud_pat(uint8_t type) {
@@ -952,7 +1070,6 @@ static void update_game(void) {
                     players[activePlayer].lives = 0;
                     players[activePlayer].alive = 0;
                     audioStopSource(stageBossAudio());
-                    audioPlaySource(AUDIO_TIMEWARP);
                     game_over_screen();
                     state = 3;
                     titleClear = 1;
@@ -964,7 +1081,6 @@ static void update_game(void) {
                     players[0].lives = 0;
                     players[0].alive = 0;
                     audioStopSource(stageBossAudio());
-                    audioPlaySource(AUDIO_TIMEWARP);
                     game_over_screen();
                     state = 3;
                     titleClear = 1;
@@ -1232,13 +1348,15 @@ static void update_game(void) {
         }
     }
 
-    /* Auto-clear STAGE CLEAR after 3s, then radar sweep to next stage announce */
+    /* Auto-clear STAGE CLEAR after 3s, play TIMEWARP sound at 1s remaining, then execute time warp! */
     if (stageClearTimer > 0) {
         stageClearTimer--;
+        if (stageClearTimer == 60) {
+            audioPlaySource(AUDIO_TIMEWARP);
+        }
         if (stageClearTimer == 0) {
-            stage = (uint8_t)((stage + 1) % NUM_STAGES);
-            enemiesKilled = 0;
-            playerInvuln = 90;  /* 1.5s invulnerability upon entering new era */
+            /* Erase STAGE CLEAR text banner */
+            draw_text(14, 8, "           ", 0);
 
             /* Wipe all leftover enemies, bullets, bomber, and boss from previous era */
             for (i = 0; i < NUM_ENEMIES; i++) {
@@ -1257,13 +1375,20 @@ static void update_game(void) {
             bomberOn = 0; bomberBoom = 0; hide_sprite(SPR_BOMBER);
             bossOn = 0; bossBoom = 0; hide_sprite(SPR_BOSS);
 
+            /* Execute authentic CX16 / Arcade hyperspace Time Warp sequence! */
+            screen_time_warp();
+
+            stage = (uint8_t)((stage + 1) % NUM_STAGES);
+            enemiesKilled = 0;
+            playerInvuln = 90;  /* 1.5s invulnerability upon entering new era */
+
             screen_wipe_to_sky(stage);      /* counter-clockwise radar sweep to next era! */
             set_stage_palette();
             upload_stage_art();
             paint_status_bar();
             g_hudDirty = 1;
             facing = 8;
-            set_sprite_pat(SPR_PLAYER, PAT_PLAYER + 24 * 256);
+            set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
 
             /* Transition to authentic stage announce screen (PLAYER 1 / A.D. XXXX / STAGE X) */
             announceT = 100;
@@ -2184,7 +2309,7 @@ int main(void) {
             {
                 if (announceT == 0) {
                     if (isGameStartIntro && !isDemoMode) {
-                        announceT = 455;   /* ~7.6s (7.13s music + 0.02s tail + natural FIFO drain) */
+                        announceT = 480;   /* 8.0s (480 frames @ 60Hz: full opening theme + trailing reverb) */
                         audioPlaySource(AUDIO_GAME_START);
                     } else {
                         announceT = 100;   /* ~1.6s brief era announce */
