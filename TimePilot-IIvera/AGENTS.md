@@ -439,6 +439,13 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
       - `A.D. yyyy` / `READY`: **Row 17** (`y = 136..143`, 8px sky gap cleanly below fighter)
       - `STAGE n`: **Row 21** (`y = 168..175`, 24px sky gap below era label)
     - **STAGE CLEAR Vertical Clearance (Row 10)**: Moved `STAGE CLEAR` from Row 14 (`y = 112..119`, overlapping the fighter) up to **Row 10** (`y = 80..87`), placing it proudly in the upper playfield with a 24-pixel clear sky gap above the player plane and boss explosion!
+56. **Boss Premature Smoke Bug Elimination & Progressive Damage Rendering (Arcade 1:1 Parity)**:
+    - **Premature Smoke Root Cause**: Boss sprite sheets across Stages 0..3 (`l0boss`~`l3boss`, 8 frames) contain 4 frames per direction: Frame 0 (Right, pristine/no smoke), Frames 1..3 (Right, light/medium/heavy damage smoke), Frame 4 (Left, pristine/no smoke), Frames 5..7 (Left, light/medium/heavy damage smoke). Previously, `bPat` unconditionally cycled `((frameCount >> 2) & 3) * 512`, causing an unhit boss at full health to display progressive damage smoke and fire 75% of the time right from its initial entrance!
+    - **Health-Dependent Damage Smoke Rendering**: Replaced unconditional cycling with damage-gated logic. When `bossHp == BOSS_HP` (uninjured), `damageFrame` is strictly locked at 0 (Frame 0 facing right, Frame 4 facing left), presenting an authentic 100% pristine flagship with zero premature smoke.
+    - **Progressive Smoke Billowing on Damage**: As the player lands hits on the boss (`bossHp < BOSS_HP`), `damageFrame` dynamically billows:
+      - 1st hit (`bossHp == 4`): Light smoke puffs alternating between 0 and 1.
+      - 2nd hit (`bossHp == 3`): Dense smoke billowing across frames 0..2.
+      - Critical hits (`bossHp <= 2`): Heavy billowing smoke and fire across frames 0..3 until total destruction!
 
 ---
 

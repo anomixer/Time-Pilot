@@ -1321,13 +1321,26 @@ static void update_game(void) {
         if (bossXpos < 10)  bossVX = 3;
         if (bossXpos > 180) bossVX = -3;
 
-        /* Directional sprite & propeller animation: 32x16 */
+        /* Directional sprite & damage smoke animation: 32x16 */
         uint16_t bPat = PAT_BOSS;
         if (stage == 4) {
+            /* Space Mothership (A.D. 2001): 2-frame pulsating energy core */
             bPat += (uint16_t)((frameCount >> 2) & 1) * 512;
         } else {
             uint8_t dirOff = (bossVX > 0) ? 0 : 4;  /* frames 0..3 right, 4..7 left */
-            bPat += (uint16_t)(dirOff + ((frameCount >> 2) & 3)) * 512;
+            uint8_t damageFrame = 0;
+            if (bossHp < BOSS_HP) {
+                /* Progressive damage smoke: only billows after being damaged by player! */
+                uint8_t maxD = 1;
+                if (bossHp <= 2) {
+                    maxD = 3;       /* Heavy damage: frames 0..3 */
+                } else if (bossHp <= 3) {
+                    maxD = 2;       /* Medium damage: frames 0..2 */
+                }
+                /* Billowing smoke puffs cycling between 0 and maxD */
+                damageFrame = (uint8_t)((frameCount >> 2) % (maxD + 1));
+            }
+            bPat += (uint16_t)(dirOff + damageFrame) * 512;
         }
         set_sprite_pat(SPR_BOSS, bPat);
         move_sprite(SPR_BOSS, bossXpos, 60);
