@@ -1,6 +1,6 @@
-# Time Pilot for Apple IIe + VERA (TimePilot-IIvera)
+# Time Pilot for Apple II+ / IIe + VERA (TimePilot-IIvera)
 
-1982 Konami 街機經典《Time Pilot》（時空領航員）Apple IIe + VERA 擴充卡 100% 原版規格高傳真移植版。  
+1982 Konami 街機經典《Time Pilot》（時空領航員）Apple II+ / IIe + VERA 擴充卡 100% 原版規格高傳真移植版。  
 本專案直接繼承與改編自 Stefan Wessels 於 2024 年發布之 **TimePilot-CX16** 與 Apple IIgs 版本。
 
 ---
@@ -16,15 +16,15 @@
 
 ## 三大平台版本差異對照表 (Platform Comparison: CX16 vs. IIgs vs. IIvera)
 
-《Time Pilot》在復古電腦社群中主要存在三大移植版本：Stefan Wessels 於 2024 年主導開發的 **Commander X16** 版本、與 Brutal Deluxe 合作的 **Apple IIgs** 16 位元原生版本，以及本專案為 **Apple IIe 搭配 VERA 擴充卡**打造的極限 8 位元終極版本。
+《Time Pilot》在復古電腦社群中主要存在三大移植版本：Stefan Wessels 於 2024 年主導開發的 **Commander X16** 版本、與 Brutal Deluxe 合作的 **Apple IIgs** 16 位元原生版本，以及本專案為 **Apple II+ / IIe 搭配 VERA 擴充卡**打造的極限 8 位元終極版本。
 
 下表完整解析三者在硬體規格、架構設計與遊戲呈現狀態上的核心差異：
 
 ### 1. 硬體規格與系統架構對照 (Hardware Specifications)
 
-| 規格維度 | Commander X16 (CX16) | Apple IIgs (GS/OS 原生) | Apple IIe + VERA (TimePilot-IIvera) |
+| 規格維度 | Commander X16 (CX16) | Apple IIgs (GS/OS 原生) | Apple II+ / IIe + VERA (TimePilot-IIvera) |
 | :--- | :--- | :--- | :--- |
-| **主機平台** | Commander X16 現代復古電腦 | Apple IIgs (1986) 16 位元個人電腦 | Apple IIe / IIgs / Laser 128 (8 位元古董機) |
+| **主機平台** | Commander X16 現代復古電腦 | Apple IIgs (1986) 16 位元個人電腦 | **Apple II+ (需 64KB) / IIe / IIgs / Laser 128**<br>(ProDOS 嚴格要求 64KB RAM；Apple II+ 需加裝 Slot 0 16KB 語言卡擴充至 64KB，未擴充之初代 48K Apple II 無法運行 ProDOS) |
 | **CPU 處理器** | WDC 65C02S (8-bit) | WDC 65C816 (16-bit) | **MOS 6502 / 65C02 (純 8-bit 極限挑戰)** |
 | **運作時脈** | **8.0 MHz** (算力極度充裕) | **2.8 MHz** (16 位元指令集) | **1.02 MHz** (算力僅 CX16 的 1/8) |
 | **主機 RAM 記憶體** | 512 KB ~ 2 MB (Banked RAM) | 1.25 MB ~ 8 MB Fast RAM | **主機僅 64 KB ~ 128 KB**<br>程式碼嚴格壓在 29 KB (`$1400..$85AD`) |
@@ -40,7 +40,7 @@
 
 ### 2. 遊戲呈現狀態與核心機制差異 (Game Presentation & Engine Features)
 
-| 遊戲呈現維度 | Commander X16 (CX16) | Apple IIgs (GS/OS 原生) | Apple IIe + VERA (TimePilot-IIvera) |
+| 遊戲呈現維度 | Commander X16 (CX16) | Apple IIgs (GS/OS 原生) | Apple II+ / IIe + VERA (TimePilot-IIvera) |
 | :--- | :--- | :--- | :--- |
 | **垂直視野與版面** | 320 × 240 完整視野 (40×30 比例)<br>右側黑底狀態列 | 320 × 200 壓縮視野 (垂直少 40 像素)<br>右側黑底狀態列 | **320 × 240 完美街機比例**<br>左側 28 欄戰場 + 右側 12 欄純黑狀態列 (T256C=0) |
 | **精靈繪製技術** | FPGA 硬體精靈合成，無畫面閃爍 | 純 CPU 軟體貼圖 (Mr Sprite 產生之 65816 碼)<br>需靠 **Racing the Beam** 追光束防撕裂 | **FPGA 硬體精靈合成**，128 個精靈無閃爍撕裂，1.02MHz 即可滿幀 60 FPS 運行 |

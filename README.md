@@ -4,7 +4,7 @@ Remake of the Time Pilot arcade game, released in 1982 by Konami.
 Video of Windows/Linux/macOS and Commander X16 versions on YouTube: https://youtu.be/EGAHTqTvGlY  
     
 ## Versions  
-[Apple IIe + VERA Readme](TimePilot-IIvera/README.md)  
+[Apple II+ / IIe + VERA Readme](TimePilot-IIvera/README.md)  
 [Apple IIgs Readme](TimePilot-IIgs/README.md)  
 [Windows/Linux/macOS](TimePilot-16bit-C/README.md)  
 [Commander X16 Readme](TimePilot-CX16/README.md)  

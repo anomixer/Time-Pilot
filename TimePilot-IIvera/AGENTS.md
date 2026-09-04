@@ -1,7 +1,8 @@
 # Time Pilot IIvera — Development Log & Project Guide
 
-Port of **Time Pilot** to an Apple IIe running the VERA (VIDHD-style) card,
-using **llvm-mos** (mos-apple2e target) and verified on the **apple2ts** emulator.
+Port of **Time Pilot** to Apple II+ (with 16KB Language Card for 64KB RAM) / IIe / IIgs / Laser 128 running the VERA card,
+using **llvm-mos** (mos-apple2e target) and verified on real Apple II hardware as well as the **apple2ts** emulator.
+*(Note: Unexpanded original 48KB Apple II cannot run ProDOS, which strictly requires 64KB RAM).*
 
 This document records the development journey, current progress, and the
 technical constraints that shape the codebase. Read it before making changes.
@@ -10,7 +11,7 @@ technical constraints that shape the codebase. Read it before making changes.
 
 ## What This Project Is
 
-A faithful Time Pilot arcade experience on Apple II + VERA:
+A faithful Time Pilot arcade experience on Apple II+ / IIe + VERA:
 
 - The player plane is **FIXED at the playfield center**; the **world scrolls**
   opposite the plane's facing (flying-into-the-distance feel).
