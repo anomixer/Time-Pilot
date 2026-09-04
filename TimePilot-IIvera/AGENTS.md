@@ -485,6 +485,7 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
 - **Interactive High Score Initials Entry**: Interactive letter cycling & cursor blinking.
 - **Native Joystick Support & K/J Toggle**: Defaults to Joystick mode, title screen shows `[K]EYBOARD` and `[J]OYSTICK` with active highlight, PDL0/1 analog steering + PB0/1 fire.
 - **CX16 Pixel-Exact Visual Parity & Full Author Credits**: Pitch-black title/attract background (`cx16-1.jpg`), 7-digit right-aligned ranking scores ending at Column 16 under 'G' of `RANKING`, Anomixer 2026 author credits, overlay protection on ranking screen, rows 11/15/19 stage announce around centered plane (`cx16-2.jpg`).
+- **Stage 5 Space Mothership & UFO Color Parity**: Full arcade electric Cyan (`0x00CF`) entry color, authentic dynamic damage pulsation between Cyan and Magenta (`0x0C0C`) under 66% health.
 - **1940 Sea-Green Sky Attract Demo Mode**: 1,472-frame replay recording, automatic launch on 4-cycle title idle, flashing `DEMO PLAY`, instant key/button break-out to real game.
 - **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 12 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
 - HDV packaging: MAIN.BIN + MAIN4.BIN + STARTUP + PCM + ART + DEMO all visible in CATALOG.
