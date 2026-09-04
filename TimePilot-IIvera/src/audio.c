@@ -243,18 +243,8 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_TIMEWARP:
-        /* Time warp ascending pitch sweep + space whoosh */
-        sfxType[CH_PICKUP] = 5;
-        sfxTimer[CH_PICKUP] = 80;
-        sfxFreq[CH_PICKUP] = 250;
-        sfxVol[CH_PICKUP] = 0x3F;
-        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
-
-        sfxType[CH_EXPL] = 1;
-        sfxTimer[CH_EXPL] = 60;
-        sfxFreq[CH_EXPL] = 1000;
-        sfxVol[CH_EXPL] = 0x38;
-        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0);
+        /* Authentic Arcade 1982 Time Warp hyperspace PCM */
+        pcm_play(audioData[AUDIO_TIMEWARP].bank, audioData[AUDIO_TIMEWARP].start, audioData[AUDIO_TIMEWARP].length, audioData[AUDIO_TIMEWARP].loops, 13);
         break;
 
     default:

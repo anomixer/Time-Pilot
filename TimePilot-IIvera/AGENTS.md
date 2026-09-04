@@ -122,12 +122,15 @@ Do NOT replace this with a busy-wait `delay()` — that made the stage announce 
 | **`$0DB86 - $0FE57`** | 8,914 B | **PCM Track 2**: `AUDIO_BIG_EXPLOSION` (1.38s authentic arcade heavy bass explosion). |
 | **`$0FE58 - $0FFFF`** | **424 B** | **Bank 0 Safe Free Margin** (avoids hardware register boundary). |
 
-#### 🔸 VRAM Bank 1 (64 KB) — Special SFX, Sprite Art RAM, PSG & Palette
+#### 🔸 VRAM Bank 1 (64 KB) — Low RAM Patterns, Special SFX, Sprite Art RAM, PSG & Palette
 | VRAM Address | Size | Description & Contents |
 | :--- | :---: | :--- |
-| **`$10000 - $127FF`** | 10,240 B | System reserved buffer. |
-| **`$12800 - $17615`** | **19,990 B**| **PCM Bank 1 Resident SFX (9 Arcade Effect Samples)**:<br>• `$12800`: `COINDROP` coin ping (2,889 B)<br>• `$13349`: `ROCKET_FLY` missile tracking buzz (1,945 B)<br>• `$13AE2`: `BOSSL0` blimp engine roar (1,208 B)<br>• `$13F9A`: `BOSSL1` bomber siren (3,348 B)<br>• `$14CAE`: `BOSSL2` chopper siren (1,039 B)<br>• `$150BD`: `BOSSL3` supersonic siren (1,254 B)<br>• `$155A3`: `BOMB` bomb drop whistle (3,867 B)<br>• `$164BE`: `ROCKET_LAUNCH` missile launch (2,223 B)<br>• `$16D6D`: `WAVE_START` formation alert (2,217 B) |
-| **`$17616 - $17FFF`** | **2,538 B** | **Bank 1 Safe Headroom Buffer** (guarantees audio never collides with sprite RAM). |
+| **`$10000 - $103FF`** | 1,024 B | `PAT_LOGO_TIME`: Title screen "TIME" logo pattern (64×16). |
+| **`$10400 - $107FF`** | 1,024 B | `PAT_LOGO_PILOT`: Title screen "PILOT" logo pattern (64×16). |
+| **`$10800 - $10BFF`** | 1,024 B | `PAT_PROG_ICON`: 8-step progress cutter icon frames (16×8). |
+| **`$10C00 - $111FF`** | 1,536 B | `PAT_NUMBERS`: Floating score popup digits 1000..5000 (16×16, 6 frames). |
+| **`$11200 - $17E7B`** | **27,772 B**| **PCM Bank 1 Resident SFX (10 Arcade Effect Samples)**:<br>• `$11200`: `COINDROP` coin ping (2,889 B)<br>• `$11D49`: `ROCKET_FLY` missile tracking buzz (1,945 B)<br>• `$124E2`: `BOSSL0` blimp engine roar (1,209 B)<br>• `$1299B`: `BOSSL1` bomber siren (3,350 B)<br>• `$136B1`: `BOSSL2` chopper siren (1,039 B)<br>• `$13AC0`: `BOSSL3` supersonic siren (1,255 B)<br>• `$13FA7`: `BOMB` bomb drop whistle (3,863 B)<br>• `$14EBE`: `ROCKET_LAUNCH` missile launch (2,223 B)<br>• `$1576D`: `WAVE_START` formation alert (2,217 B)<br>• `$16016`: `TIMEWARP` hyperspace time warp (7,782 B) |
+| **`$17E7C - $17FFF`** | **388 B** | **Bank 1 Safe Headroom Buffer** (guarantees audio never collides with sprite RAM). |
 | **`$18000 - $19FFF`** | 8,192 B | **Player Fighter Pattern RAM**: 32 directions (16×16, 256B/frame, 32 frames). |
 | **`$1A000 - $1AFFF`** | 4,096 B | **Enemy Fighter Pattern RAM**: 4 historical eras (16 frames). |
 | **`$1B000 - $1BFFF`** | 4,096 B | **Boss Flagship Pattern RAM**: Zeppelin, Bomber, Chinook, B-52, Mothership (32×16). |
@@ -183,9 +186,9 @@ STAGE CLEAR keeps reappearing.
 
 ## Audio (Dual-Bank VRAM Resident PCM & 16-Channel PSG Chiptune Engine)
 
-- **100% Zero-Disk Runtime Audio**: All 11 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200). Zero disk I/O occurs during gameplay!
+- **100% Zero-Disk Runtime Audio**: All 12 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200). Zero disk I/O occurs during gameplay!
   - **Bank 0 Resident (`$1000..$FE58`, 61,016 B)**: `AUDIO_GAME_START` (8.05s master opening theme) + `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). 424 bytes free headroom below `$FFFF`.
-  - **Bank 1 Resident (`$2800..$7616`, 19,990 B)**: 9 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_BOMB`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAVE_START`). 2,538 bytes safe buffer before sprite pattern RAM (`$8000`).
+  - **Bank 1 Resident (`$1200..$7E7B`, 27,772 B)**: 10 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_BOMB`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAVE_START`, `AUDIO_TIMEWARP`). 388 bytes safe buffer before sprite pattern RAM (`$8000`).
 - **Slot-Relative VERA PCM Hardware (`$1B / $1C / $1D`)**:
   - Direct register writes to `VERA_PCM_CTRL_REG` (`$1B`), `VERA_PCM_RATE_REG` (`$1C`), `VERA_PCM_DATA_REG` (`$1D`).
   - Pre-buffers up to 2,048 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~140 bytes per 60Hz vsync hook.
@@ -199,22 +202,22 @@ STAGE CLEAR keeps reappearing.
 | **Channel 3** | **`AUDIO_PICKUP`** | Parachute pilot rescued | Ascending 3-note arpeggio (C5 860Hz ➔ E5 1084Hz ➔ G5 1289Hz, max vol `0x3F`). |
 | **Channel 3** | **`AUDIO_EXTRA_LIFE`** | 10k / 50k score thresholds | Triple fanfare burst (E5 1084Hz, max vol `0x3F`). |
 | **Channel 0 & 3** | **`AUDIO_NEXT_LEVEL`** | Stage clear victory | A4 + C5 dual-voice pulse chord (1.6s brief fanfare). |
-| **Channel 2 & 3** | **`AUDIO_TIMEWARP`** | 22-step warp beam | Ch 3 spatial pitch sweep (250Hz ➔ 2500Hz) + Ch 2 thruster noise. |
 
-### 🎙️ 2. Dual-Bank VRAM Resident 11-Sample PCM Table
+### 🎙️ 2. Dual-Bank VRAM Resident 12-Sample PCM Table
 | VRAM Address | Audio Source | Source File | Size | Duration | Dynamic Volume | Role & Sound Design |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- |
 | **Bank 0** | **`AUDIO_GAME_START`** | `game_start.pcm` | 52,102 B | 8.05 s | **Vol 11/15** | 1982 arcade opening theme with dynamic flying scene. |
 | **Bank 0** | **`AUDIO_BIG_EXPLOSION`** | `big_explosion.pcm` | 8,914 B | 1.38 s | **Vol 13/15** | Heavy arcade explosion for player crash, boss death, and bomber! |
 | **Bank 1** | **`AUDIO_COINDROP`** | `coindrop.pcm` | 2,889 B | 0.45 s | **Vol 11/15** | Authentic metallic arcade coin drop ping. |
 | **Bank 1** | **`AUDIO_WAVE_START`** | `wave_start.pcm` | 2,217 B | 0.34 s | **Vol 10/15** | 4-plane formation attack alert siren. |
-| **Bank 1** | **`AUDIO_BOMB`** | `bomb.pcm` | 3,867 B | 0.60 s | **Vol 10/15** | 1940 heavy bomber falling bomb whistle. |
+| **Bank 1** | **`AUDIO_BOMB`** | `bomb.pcm` | 3,863 B | 0.60 s | **Vol 10/15** | 1940 heavy bomber falling bomb whistle. |
 | **Bank 1** | **`AUDIO_ROCKET_LAUNCH`**| `rocket_launch.pcm`| 2,223 B | 0.34 s | **Vol 10/15** | Supersonic homing missile rocket launch blast. |
 | **Bank 1** | **`AUDIO_ROCKET_FLY`** | `rocket_fly.pcm` | 1,945 B | 0.30 s (loop)| **Vol 7/15** | Guided missile cruise tracking buzz (ambient level). |
-| **Bank 1** | **`AUDIO_BOSSL0`** | `bossl0.pcm` | 1,208 B | 0.19 s (loop)| **Vol 7/15** | 1910 Zeppelin airship engine rumble. |
-| **Bank 1** | **`AUDIO_BOSSL1`** | `bossl1.pcm` | 3,348 B | 0.52 s (loop)| **Vol 7/15** | 1940 heavy bomber flagship siren. |
+| **Bank 1** | **`AUDIO_BOSSL0`** | `bossl0.pcm` | 1,209 B | 0.19 s (loop)| **Vol 7/15** | 1910 Zeppelin airship engine rumble. |
+| **Bank 1** | **`AUDIO_BOSSL1`** | `bossl1.pcm` | 3,350 B | 0.52 s (loop)| **Vol 7/15** | 1940 heavy bomber flagship siren. |
 | **Bank 1** | **`AUDIO_BOSSL2`** | `bossl2.pcm` | 1,039 B | 0.16 s (loop)| **Vol 7/15** | 1970 dual-rotor helicopter boss alarm. |
-| **Bank 1** | **`AUDIO_BOSSL3`** | `bossl3.pcm` | 1,254 B | 0.19 s (loop)| **Vol 7/15** | 1982 supersonic strategic bomber boss siren. |
+| **Bank 1** | **`AUDIO_BOSSL3`** | `bossl3.pcm` | 1,255 B | 0.19 s (loop)| **Vol 7/15** | 1982 supersonic strategic bomber boss siren. |
+| **Bank 1** | **`AUDIO_TIMEWARP`** | `timewarp.pcm` | 7,782 B | 1.20 s | **Vol 13/15** | Authentic 1982 arcade hyperspace time-warp sound accompanying the warp beam! |
 
 ---
 
@@ -420,6 +423,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Stage 3 Helicopter Sprite Corruption Root-Cause Elimination (`l2enemy.png`)**: Diagnosed why helicopters looked small or vanished into thin 2-pixel slivers at various angles. `l2enemy.png` has 9 frames (144px width, 16px per frame), but the original extractor divided by 8 (18px stride), shifting frames 1..7 progressively to the right and truncating up to 14 pixels of the helicopter body. Re-extracted all 9 frames cleanly with proper 16px stride, vertically centered the 16×9 helicopter into 16×16 sprite memory, and implemented authentic 32-angle mapping using CX16 `heliFrameMap`.
     - **Stage 1 (1910) Biplane Restoration (`l0enemy.png`)**: Previously, Stage 0 incorrectly shared `ART_ENEMY1_FRAMES_OFF` (WWII monoplane). Added dedicated `enemy0_frames` extracted from `l0enemy.png`, restoring the authentic 1910 biplane with double wing struts.
     - **Unified 16×16 Collision and Hardware Dims**: All enemy aircraft across all 5 eras now render as standard 16×16 sprites (`0x50`) with uniform 16-pixel collision hitboxes.
+53. **Authentic Arcade Time Warp PCM Sound & VRAM Bank 1 Pattern Consolidation**:
+    - **VRAM Bank 1 Low-RAM Consolidation (`$10000..$111FF`)**: Consolidated the four low-RAM sprite patterns (`PAT_LOGO_TIME = 0x0000`, `PAT_LOGO_PILOT = 0x0400`, `PAT_PROG_ICON = 0x0800`, `PAT_NUMBERS = 0x0C00`) into a contiguous 4,608-byte block starting at Bank 1 address `0x0000`. This moved the Bank 1 audio base down from `$2800` to `$1200`, expanding Bank 1 PCM storage capacity from 22,528 bytes to **28,160 bytes** (a 5.6 KB expansion).
+    - **Authentic 1.20s Arcade Time Warp PCM (`AUDIO_TIMEWARP`)**: Extracted the iconic ascending hyperspace time-warp sound from `timewarp.pcm`, downsampled to ~6,485 Hz (`VERA_PCM_RATE = 17`), producing 7,782 bytes (`$16016..$17E7B`). Bank 1 now houses 10 arcade effect samples (27,772 bytes total) with 388 bytes of safe headroom before sprite pattern RAM at `$8000`.
+    - **Synchronized Playback with Warp Beam**: Hooked `AUDIO_TIMEWARP` to `pcm_play` in `src/audio.c` at Volume 13/15 and triggered it at the exact start of the time-warp sequence (`stageClearTimer == 0`), perfectly synchronizing the 1.20s ascending sweep and space warp whoosh with the 1.40s incandescent beam expansion and fighter flash!
 
 ---
 

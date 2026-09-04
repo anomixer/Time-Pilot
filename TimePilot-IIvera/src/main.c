@@ -42,13 +42,13 @@
 #define PAT_CLOUD2     0xC780   // 64x16 = 1024 bytes (cloud2 / astro2)
 #define PAT_STAGE_ICON 0xCB80   // 8x8 = 64 bytes (stage.png)
 #define PAT_PARACHUTE  0xCC00   // 4 frames x 16x16 = 1024 bytes
+#define PAT_LOGO_TIME  0x0000   // 64x16 = 1024 bytes (Title: Bank 1 low RAM $10000..$103FF)
+#define PAT_LOGO_PILOT 0x0400   // 64x16 = 1024 bytes (Title: Bank 1 low RAM $10400..$107FF)
+#define PAT_PROG_ICON  0x0800   // 8 frames x 16x8 = 1024 bytes (0x0800..0x0BFF in Bank 1 low RAM)
+#define PAT_NUMBERS    0x0C00   // 6 frames x 16x16 = 1536 bytes (0x0C00..0x11FF in Bank 1 low RAM)
 #define PAT_WEAPON     0xD000   // 2048 bytes (bomb/boomerang/rocket/sbullet)
 #define PAT_BOMBER     0xD800   // 4096 bytes (32x16 x 8 frames for 1940: 0xD800..0xE7FF)
-#define PAT_LOGO_TIME  0x2000   // 64x16 = 1024 bytes (Title: Bank 1 low RAM $12000..$123FF)
-#define PAT_LOGO_PILOT 0x2400   // 64x16 = 1024 bytes (Title: Bank 1 low RAM $12400..$127FF)
 #define PAT_EXPL32     0xE800   // 4 frames x 32x16 = 2048 bytes
-#define PAT_NUMBERS    0x1000   // 6 frames x 16x16 = 1536 bytes (0x1000..0x15FF in Bank 1 low RAM)
-#define PAT_PROG_ICON  0x1800   // 8 frames x 16x8 = 1024 bytes (0x1800..0x1BFF in Bank 1 low RAM)
 
 #ifndef VERA_INC_1
 #define VERA_INC_1     (((1 << 1) | 0) << 3)
@@ -1416,12 +1416,9 @@ static void update_game(void) {
         }
     }
 
-    /* Auto-clear STAGE CLEAR after 3s, play TIMEWARP sound at 1s remaining, then execute time warp! */
+    /* Auto-clear STAGE CLEAR after 3s, then execute authentic Time Warp! */
     if (stageClearTimer > 0) {
         stageClearTimer--;
-        if (stageClearTimer == 60) {
-            audioPlaySource(AUDIO_TIMEWARP);
-        }
         if (stageClearTimer == 0) {
             /* Erase STAGE CLEAR text banner */
             draw_text(14, 8, "           ", 0);
@@ -1447,6 +1444,9 @@ static void update_game(void) {
             for (uint8_t c = 0; c < NUM_CLOUDS; c++) {
                 hide_sprite(SPR_CLOUD_BASE + c);
             }
+
+            /* Play authentic 1982 arcade Time Warp hyperspace PCM as warp beam opens! */
+            audioPlaySource(AUDIO_TIMEWARP);
 
             /* Execute authentic CX16 / Arcade hyperspace Time Warp sequence! */
             screen_time_warp();

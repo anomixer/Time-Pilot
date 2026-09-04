@@ -17,8 +17,8 @@ const PCM_START_BLOCK = 200
 const BLOCK_SIZE = 512
 const VRAM_AUDIO_BASE = 0x1000       // Bank 0 offset ($1000..$FFFF is 60KB)
 const VRAM_AUDIO_LIMIT = 65536 - VRAM_AUDIO_BASE  // 61,440 bytes
-const VRAM_AUDIO_BANK1_BASE = 0x2800 // Bank 1 offset ($2800..$7FFF is 22KB free)
-const VRAM_AUDIO_BANK1_LIMIT = 0x8000 - VRAM_AUDIO_BANK1_BASE // 22,528 bytes
+const VRAM_AUDIO_BANK1_BASE = 0x1200 // Bank 1 offset ($1200..$7FFF is 28,160 bytes)
+const VRAM_AUDIO_BANK1_LIMIT = 0x8000 - VRAM_AUDIO_BANK1_BASE // 28,160 bytes
 
 // Target rate: ~6485 Hz (VERA audio.rate = 17: 48828.125 * 17 / 128 = 6484.7 Hz)
 const VERA_PCM_RATE = 17
@@ -45,7 +45,7 @@ const SOURCES = [
   { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    bank: 0, maxSec: 0 },
   { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    bank: 1, maxSec: 0.35 },
   { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", bank: 0, maxSec: 1.38, tailSec: 0.0 },
-  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      bank: 0, maxSec: 0 },
+  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      bank: 1, maxSec: 1.20 },
 ]
 
 function processPCM(raw, maxSec, tailSec) {
