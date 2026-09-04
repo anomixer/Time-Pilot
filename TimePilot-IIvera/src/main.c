@@ -2019,20 +2019,20 @@ static void draw_hs_table(void) {
     for (i = 0; i < NUM_HIGHSCORES; i++) {
         uint8_t y = (uint8_t)(7 + i * 2);
         draw_text(y, 4, hsRank[i], hsColor[i]);
-        /* Format score right-aligned 5 digits at col 11..15 */
+        /* Format score right-aligned 7 digits at col 10..16 (units digit aligned with 'G' in RANKING at col 16) */
         char sbuf[8];
         uint32_t ns = highScore[i];
-        for (int b = 4; b >= 0; b--) {
+        for (int b = 6; b >= 0; b--) {
             sbuf[b] = (char)('0' + (ns % 10));
             ns /= 10;
         }
-        sbuf[5] = 0;
+        sbuf[7] = 0;
         int z = 0;
-        while (z < 4 && sbuf[z] == '0') {
+        while (z < 6 && sbuf[z] == '0') {
             sbuf[z] = ' ';
             z++;
         }
-        draw_text(y, 11, sbuf, hsColor[i]);
+        draw_text(y, 10, sbuf, hsColor[i]);
         draw_initials(y, 20, highScoreInitials[i], hsColor[i]);
     }
 }

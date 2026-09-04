@@ -135,8 +135,18 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_NEXT_LEVEL:
-        /* Authentic Arcade Konami Stage Clear vocal synthesizer "Ah~~~" PCM */
-        pcm_play(audioData[AUDIO_NEXT_LEVEL].bank, audioData[AUDIO_NEXT_LEVEL].start, audioData[AUDIO_NEXT_LEVEL].length, audioData[AUDIO_NEXT_LEVEL].loops, 13);
+        /* Stage clear victory fanfare: rising pulse chord */
+        sfxType[CH_PICKUP] = 1;
+        sfxTimer[CH_PICKUP] = 30;
+        sfxFreq[CH_PICKUP] = 680;  /* A4 */
+        sfxVol[CH_PICKUP] = 0x3F;
+        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
+
+        sfxType[CH_PLAYER] = 1;
+        sfxTimer[CH_PLAYER] = 30;
+        sfxFreq[CH_PLAYER] = 860;  /* C5 */
+        sfxVol[CH_PLAYER] = 0x3F;
+        psg_write(CH_PLAYER, sfxFreq[CH_PLAYER], 0xC0 | sfxVol[CH_PLAYER], 0x20);
         break;
 
     case AUDIO_PLAYER_SHOOT:

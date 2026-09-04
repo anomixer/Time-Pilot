@@ -29,10 +29,10 @@ Traditional Apple II games attempting to play digitized sound or stream multi-st
 
 This port achieves an uncompromising **100% Zero-Disk Runtime Engine**:
 1. **One-Time Boot Streaming (VERA 128KB VRAM as High-Speed SSD)**:
-   - During the boot loader, `upload_pcm_to_vram()` and `setup_sprites()` stream **85,517 bytes (168 disk blocks) of 13 authentic arcade PCM samples** (including Game Start, Big Explosion, Konami Stage Clear vocal "Ah~~~" fanfare, Time Warp whoosh, bombs, sirens, and missiles) and **56,640 bytes (111 disk blocks) of all-era sprite artwork** directly into VERA's 128 KB dual-bank VRAM (Bank 0 and Bank 1) via ProDOS Direct Block MLI (`$80`).
+   - During the boot loader, `upload_pcm_to_vram()` and `setup_sprites()` stream **82,730 bytes (162 disk blocks) of 12 authentic arcade PCM samples** (including Game Start, Big Explosion, Time Warp whoosh, bombs, sirens, and missiles) and **56,640 bytes (111 disk blocks) of all-era sprite artwork** directly into VERA's 128 KB dual-bank VRAM (Bank 0 and Bank 1) via ProDOS Direct Block MLI (`$80`).
 2. **Disk Drive Completely Silent During Entire Play Session**:
    - Once the title screen appears and throughout all active gameplay, **the disk drive goes completely silent and the activity LED remains off**.
-   - Intense 360° dogfights, heavy explosions, multi-squad formation attacks, guided missile launches, and even inter-era stage transitions (Boss Explosion ➔ STAGE CLEAR "Ah~~~" ➔ Time Warp hyperspace beam) execute with **zero disk reads**.
+   - Intense 360° dogfights, heavy explosions, multi-squad formation attacks, guided missile launches, and even inter-era stage transitions (Boss Explosion ➔ STAGE CLEAR ➔ Time Warp hyperspace beam) execute with **zero disk reads**.
 3. **Rock-Solid 60 FPS with < 1% CPU Overhead**:
    - PCM playback streams ~140 bytes from VRAM directly into VERA's 4KB hardware FIFO register in tens of microseconds during the 60Hz vsync hook, consuming less than 1% of the 1.02 MHz 6502 CPU budget.
 
@@ -446,6 +446,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
       - 1st hit (`bossHp == 4`): Light smoke puffs alternating between 0 and 1.
       - 2nd hit (`bossHp == 3`): Dense smoke billowing across frames 0..2.
       - Critical hits (`bossHp <= 2`): Heavy billowing smoke and fire across frames 0..3 until total destruction!
+57. **Full 7-Digit High Score Support & Precision 'G' Alignment in Score Ranking Table**:
+    - **7-Digit Score Formatting**: Upgraded `draw_hs_table()` from a 5-digit modulo loop to a full 7-digit right-aligned formatter (`for (int b = 6; b >= 0; b--)`), eliminating truncation of scores >= 100,000 (such as `150400` previously truncated to `50400`).
+    - **Precision Alignment Under 'G' of RANKING (Col 16)**: `SCORE RANKING TABLE` begins at Column 4, placing the terminal letter `'G'` at Column 16. Configured 7-character right-aligned score rendering from Column 10 to Column 16 (`draw_text(y, 10, sbuf, hsColor[i])`), placing the units digit (`sbuf[6]`) strictly at Column 16 directly beneath `'G'`, achieving 100% pixel-perfect alignment with original Commander X16 (`cx16-1.jpg`) and arcade hardware.
+    - **Memory Isolation & Safety Verification**: Formatted score into a localized stack-allocated buffer `char sbuf[8]`, eliminating shared static buffer contention with HUD score formatting (`snum_buf`) and ensuring zero memory corruption across PSG audio tables or zero-page variables. Linker map confirms program and data terminate safely at `$88D1`, providing over 13.5 KB of verified headroom below the `$BE00` stack.
 
 ---
 
@@ -476,9 +480,9 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
 - **Propeller Palette Cycling**: Hardware palette cycling for rotating propellers/rotors.
 - **Interactive High Score Initials Entry**: Interactive letter cycling & cursor blinking.
 - **Native Joystick Support & K/J Toggle**: Defaults to Joystick mode, title screen shows `[K]EYBOARD` and `[J]OYSTICK` with active highlight, PDL0/1 analog steering + PB0/1 fire.
-- **CX16 Pixel-Exact Visual Parity & Full Author Credits**: Pitch-black title/attract background (`cx16-1.jpg`), right-aligned ranking scores, Anomixer 2026 author credits, overlay protection on ranking screen, rows 11/15/19 stage announce around centered plane (`cx16-2.jpg`).
+- **CX16 Pixel-Exact Visual Parity & Full Author Credits**: Pitch-black title/attract background (`cx16-1.jpg`), 7-digit right-aligned ranking scores ending at Column 16 under 'G' of `RANKING`, Anomixer 2026 author credits, overlay protection on ranking screen, rows 11/15/19 stage announce around centered plane (`cx16-2.jpg`).
 - **1940 Sea-Green Sky Attract Demo Mode**: 1,472-frame replay recording, automatic launch on 4-cycle title idle, flashing `DEMO PLAY`, instant key/button break-out to real game.
-- **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 11 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
+- **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 12 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
 - HDV packaging: MAIN.BIN + MAIN4.BIN + STARTUP + PCM + ART + DEMO all visible in CATALOG.
 
 ### Active / In progress
