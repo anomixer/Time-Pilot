@@ -142,6 +142,7 @@ static const char sReady[]       = "READY";
 static const char sStage[]       = "STAGE";
 static uint8_t stageIntroState   = 0;
 static uint16_t announceT        = 0;
+static uint8_t isGameStartIntro  = 0;
 static uint8_t playerBoom        = 0;
 static uint8_t playerDeadTimer   = 0;
 static const char sStageClear[]  = "STAGE CLEAR";
@@ -576,6 +577,43 @@ static void reset_clouds(void) {
     }
 }
 
+static void update_clouds(int16_t scrollDx, int16_t scrollDy) {
+    uint8_t i;
+    for (i = 0; i < NUM_CLOUDS; i++) {
+        uint8_t t = cloudType[i];
+        int16_t spd = (t == 0) ? 1 : (t == 1) ? 2 : 3;
+        int16_t w = (t == 0) ? 16 : (t == 1) ? 32 : 64;
+        int16_t spanX = (int16_t)(224 + w);
+        int16_t cx = (int16_t)cloudX[i] + (scrollDx * spd) / 2;
+        int16_t cy = (int16_t)cloudY[i] + (scrollDy * spd) / 2;
+        if (cx < -w)       cx += spanX;
+        else if (cx > 224) cx -= spanX;
+        if (cy < -16)      cy += 256;
+        else if (cy > 240) cy -= 256;
+        cloudX[i] = cx;
+        cloudY[i] = cy;
+        move_sprite(SPR_CLOUD_BASE + i, (uint16_t)cx, (uint16_t)cy);
+    }
+}
+
+static void update_propeller(void) {
+    if (stage < 3 && !(frameCount & 3)) {
+        propState ^= 1;
+        vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 32 + 14 * 2));
+        if (propState) {
+            VERA.data0 = (uint8_t)(colorPaletteSky[stage] & 0xFF);
+            VERA.data0 = (uint8_t)(colorPaletteSky[stage] >> 8);
+            VERA.data0 = (uint8_t)(colorPaletteProps[stage] & 0xFF);
+            VERA.data0 = (uint8_t)(colorPaletteProps[stage] >> 8);
+        } else {
+            VERA.data0 = (uint8_t)(colorPaletteProps[stage] & 0xFF);
+            VERA.data0 = (uint8_t)(colorPaletteProps[stage] >> 8);
+            VERA.data0 = (uint8_t)(colorPaletteSky[stage] & 0xFF);
+            VERA.data0 = (uint8_t)(colorPaletteSky[stage] >> 8);
+        }
+    }
+}
+
 /* ------------------------- Setup ------------------------- */
 static const uint32_t enemyArtOff[5] = {
     ART_ENEMY1_FRAMES_OFF, ART_ENEMY1_FRAMES_OFF, ART_ENEMY2_FRAMES_OFF,
@@ -964,21 +1002,7 @@ static void update_game(void) {
     }
 
     /* Clouds scroll with parallax and wrap around edges. */
-    for (i = 0; i < NUM_CLOUDS; i++) {
-        uint8_t t = cloudType[i];
-        int16_t spd = (t == 0) ? 1 : (t == 1) ? 2 : 3;
-        int16_t w = (t == 0) ? 16 : (t == 1) ? 32 : 64;
-        int16_t spanX = (int16_t)(224 + w);
-        int16_t cx = (int16_t)cloudX[i] + (scrollDx * spd) / 2;
-        int16_t cy = (int16_t)cloudY[i] + (scrollDy * spd) / 2;
-        if (cx < -w)       cx += spanX;
-        else if (cx > 224) cx -= spanX;
-        if (cy < -16)      cy += 256;
-        else if (cy > 240) cy -= 256;
-        cloudX[i] = cx;
-        cloudY[i] = cy;
-        move_sprite(SPR_CLOUD_BASE + i, (uint16_t)cx, (uint16_t)cy);
-    }
+    update_clouds(scrollDx, scrollDy);
 
     /* Player bullets. */
     for (i = 0; i < NUM_BULLETS; i++) {
@@ -1242,7 +1266,7 @@ static void update_game(void) {
             set_sprite_pat(SPR_PLAYER, PAT_PLAYER + 24 * 256);
 
             /* Transition to authentic stage announce screen (PLAYER 1 / A.D. XXXX / STAGE X) */
-            announceT = 50;
+            announceT = 100;
             g_annDrawn = 0;
             stageIntroState = 0;
             state = 4;
@@ -1470,21 +1494,7 @@ static void update_game(void) {
     }
 
     /* Propeller & rotor animation via palette cycling in stages 0, 1, 2 */
-    if (stage < 3 && !(frameCount & 3)) {
-        propState ^= 1;
-        vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 32 + 14 * 2));
-        if (propState) {
-            VERA.data0 = (uint8_t)(colorPaletteSky[stage] & 0xFF);
-            VERA.data0 = (uint8_t)(colorPaletteSky[stage] >> 8);
-            VERA.data0 = (uint8_t)(colorPaletteProps[stage] & 0xFF);
-            VERA.data0 = (uint8_t)(colorPaletteProps[stage] >> 8);
-        } else {
-            VERA.data0 = (uint8_t)(colorPaletteProps[stage] & 0xFF);
-            VERA.data0 = (uint8_t)(colorPaletteProps[stage] >> 8);
-            VERA.data0 = (uint8_t)(colorPaletteSky[stage] & 0xFF);
-            VERA.data0 = (uint8_t)(colorPaletteSky[stage] >> 8);
-        }
-    }
+    update_propeller();
 }
 
 /* ------------------------- HUD / screens ------------------------- */
@@ -1753,6 +1763,8 @@ static void start_game_from_ui(uint8_t mode) {
     VERA.display.video = 0x51; /* Clean atomic reveal at VSYNC */
 
     g_annDrawn = 0;
+    isGameStartIntro = 1;
+    announceT = 0;
     state = 4;
     titleClear = 1;
 }
@@ -2171,18 +2183,33 @@ int main(void) {
         case 4: /* Stage announce (PLAYER 1 / A.D. yyyy / STAGE n or READY) */
             {
                 if (announceT == 0) {
-                    announceT = stageIntroState ? 100 : 455;   /* ~7.6s (7.13s music + 0.02s tail + natural FIFO drain) */
-                    g_hudDirty = 1;
-                    if (!stageIntroState && !isDemoMode) {
+                    if (isGameStartIntro && !isDemoMode) {
+                        announceT = 455;   /* ~7.6s (7.13s music + 0.02s tail + natural FIFO drain) */
                         audioPlaySource(AUDIO_GAME_START);
+                    } else {
+                        announceT = 100;   /* ~1.6s brief era announce */
                     }
+                    isGameStartIntro = 0;
+                    g_hudDirty = 1;
                 }
                 stage_announce();
                 draw_hud();
                 /* Allow player to steer the plane freely */
                 if (!isDemoMode) {
+                    if (ku == 'K') useJoystick = 0;
+                    if (ku == 'J') useJoystick = 1;
                     update_player_steering(k, ku);
+                } else {
+                    demo_autopilot();
                 }
+
+                /* Move clouds and animate propeller during stage announce */
+                if (!(frameCount & 1)) {
+                    int16_t scrollDx = -(int16_t)velDx[facing];
+                    int16_t scrollDy = -(int16_t)velDy[facing];
+                    update_clouds(scrollDx, scrollDy);
+                }
+                update_propeller();
 
                 if (--announceT == 0) {
                     /* Erase announce text only (sky and clouds remain undisturbed) */

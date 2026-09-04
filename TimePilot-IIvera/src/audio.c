@@ -77,7 +77,7 @@ void audioCleanup(void) {
 }
 
 int8_t audioIsSourcePlaying(int8_t source) {
-    if (source == AUDIO_GAME_START || source == AUDIO_NEXT_LEVEL) return pcmActive;
+    if (source == AUDIO_GAME_START) return pcmActive;
     return (activePlaying == source);
 }
 
@@ -102,7 +102,6 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_GAME_START:
-    case AUDIO_NEXT_LEVEL:
         pcmActive = 1;
         pcmOffset = 0;
         VERA_PCM_RATE_REG = 0;
@@ -118,6 +117,21 @@ void audioPlaySource(int8_t source) {
         /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 21 (~8010 Hz) */
         VERA_PCM_CTRL_REG = 0x0F; /* Mono, 8-bit, Vol 15 */
         VERA_PCM_RATE_REG = 21;   /* 8,010 Hz */
+        break;
+
+    case AUDIO_NEXT_LEVEL:
+        /* Stage clear victory fanfare: rising pulse chord */
+        sfxType[CH_PICKUP] = 1;
+        sfxTimer[CH_PICKUP] = 30;
+        sfxFreq[CH_PICKUP] = 680;  /* A4 */
+        sfxVol[CH_PICKUP] = 0x3F;
+        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
+
+        sfxType[CH_PLAYER] = 1;
+        sfxTimer[CH_PLAYER] = 30;
+        sfxFreq[CH_PLAYER] = 860;  /* C5 */
+        sfxVol[CH_PLAYER] = 0x3F;
+        psg_write(CH_PLAYER, sfxFreq[CH_PLAYER], 0xC0 | sfxVol[CH_PLAYER], 0x20);
         break;
 
     case AUDIO_PLAYER_SHOOT:

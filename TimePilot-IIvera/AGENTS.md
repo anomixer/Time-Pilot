@@ -295,6 +295,10 @@ directly via MLI. So they are both "visible files" AND directly addressable by b
 
 43. **Centered Fighter Bullet Spawn (+7 Pixel Offset Alignment)**:
     - **Sprite Coordinate Offset Diagnosis**: Diagnosed bullet offset where player missiles spawned 7 pixels to the left of the fighter nose. The player is a 16x16 sprite centered at offset +7..+8, while the 2x2 white bullet dot is positioned at `(0,0)..(1,1)` of its 8x8 sprite box. Spawning directly at `playerX` placed the dot at `playerX + 0` (far left wing). Added `+ 7` offset to `bulletX` and `bulletY` in `fire_bullet()`, perfectly aligning missile emission with the fighter nose tip across all 32 rotation headings, matching CX16 visual reference.
+44. **Dynamic Flight Cruise in Intro Stage Announce & Decoupled Stage Audio Progression**:
+    - **Active Flight Cruise During Opening Theme (`case 4`)**: While the 7.6-second `AUDIO_GAME_START` opening theme plays during the initial era announcement, player steering (`update_player_steering`), cloud parallax motion (`update_clouds`), and biplane propeller rotation (`update_propeller`) now run continuously in real-time. Players can steer freely across all 32 angles with clouds smoothly shifting drift vectors.
+    - **Decoupled Opening Music for Stage 2+**: Added `isGameStartIntro` flag so `AUDIO_GAME_START` is exclusively triggered when starting a fresh game from the title screen. Advancing to Stage 2 (1940) and subsequent eras presents a clean ~1.6s (100 frames) stage announcement without re-triggering the long PCM music.
+    - **PSG Fanfare for `AUDIO_NEXT_LEVEL`**: Decoupled `AUDIO_NEXT_LEVEL` from the PCM streaming path in `src/audio.c`, replacing it with a pure PSG two-tone rising chord fanfare so boss destruction stage clear transitions no longer replay the 7.6s PCM opening theme.
 
 ---
 
