@@ -432,6 +432,13 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **1.0-Second Dead Silence Elimination**: Analyzed `game_start.pcm` and discovered the final note and its acoustic reverb decay completely to zero at 7.034s, leaving exactly 1.000 second of 0x00 dead silence from 7.034s to 8.034s. Trimmed `AUDIO_GAME_START` to 7.10s (46,044 bytes), saving **6,058 bytes** of VRAM and 12 disk blocks on the HDV image (`88,788B -> 82,730B`).
     - **Pacing Snappiness**: Adjusted game start stage announcement `announceT` from 480 frames to 430 frames (~7.15s), allowing the dogfight to begin immediately as the music naturally finishes without an awkward 1-second silent freeze.
     - **Dual-Bank Headroom Balancing**: Reallocated `AUDIO_BOMB` (3,863 B) from Bank 1 into Bank 0. Bank 0 now holds 58,821 bytes with **2,619 bytes free headroom**, while Bank 1 holds 23,909 bytes with **4,251 bytes safe headroom** before sprite pattern RAM at `$8000`, providing spacious protection across both banks!
+55. **Stage Announcement & STAGE CLEAR Plane Overlap Elimination (Arcade 1:1 Parity)**:
+    - **Stage Announcement Row Recalibration**: With the player fighter centered at `PLAYER_Y0 = 112` (occupying Rows 14 & 15, `y = 112..127`), `A.D. yyyy` and `READY` were previously rendered at Row 15, directly colliding with the bottom half of the fighter. Recalibrated layout matching 1982 Konami arcade reference:
+      - `PLAYER 1` / `PLAYER 2`: **Row 11** (`y = 88..95`, 16px sky gap above fighter nose)
+      - Fighter Plane: **Rows 14 & 15** (`y = 112..127`, centered at `(104, 112)`)
+      - `A.D. yyyy` / `READY`: **Row 17** (`y = 136..143`, 8px sky gap cleanly below fighter)
+      - `STAGE n`: **Row 21** (`y = 168..175`, 24px sky gap below era label)
+    - **STAGE CLEAR Vertical Clearance (Row 10)**: Moved `STAGE CLEAR` from Row 14 (`y = 112..119`, overlapping the fighter) up to **Row 10** (`y = 80..87`), placing it proudly in the upper playfield with a 24-pixel clear sky gap above the player plane and boss explosion!
 
 ---
 

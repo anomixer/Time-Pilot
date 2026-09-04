@@ -1405,8 +1405,8 @@ static void update_game(void) {
             popupOn = 0;
             set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
 
-            /* Display STAGE CLEAR perfectly centered in playfield (col 8 of 28 cols) for exactly 3 seconds (180 frames) */
-            draw_text(14, 8, sStageClear, 9);
+            /* Display STAGE CLEAR in upper playfield (Row 10, Col 8) safely above player plane for 3 seconds */
+            draw_text(10, 8, sStageClear, 9);
             stageClearTimer = 180;
             audioPlaySource(AUDIO_NEXT_LEVEL);
         } else {
@@ -1421,7 +1421,7 @@ static void update_game(void) {
         stageClearTimer--;
         if (stageClearTimer == 0) {
             /* Erase STAGE CLEAR text banner */
-            draw_text(14, 8, "           ", 0);
+            draw_text(10, 8, "           ", 0);
 
             /* Wipe all leftover enemies, bullets, bomber, and boss from previous era */
             for (i = 0; i < NUM_ENEMIES; i++) {
@@ -1935,20 +1935,20 @@ static void game_over_screen(void) {
     draw_text(17, 10, sGameOver, 1);     /* RED "GAME OVER" (row 17, col 10) */
 }
 
-/* Stage announce (CX16 uiShowPreGameLabels): PLAYER 1 / A.D. yyyy / STAGE n or READY (matches cx16-2.jpg) */
+/* Stage announce (CX16 uiShowPreGameLabels): PLAYER 1 (Row 11) / Plane (Rows 14-15) / A.D. yyyy (Row 17) / STAGE n (Row 21) */
 static void stage_announce(void) {
     if (g_annDrawn) return;
     g_annDrawn = 1;
     draw_text(11, 10, (activePlayer == 1) ? sPlayer2 : sPlayer1, 9);     /* Row 11: WHITE PLAYER 1 */
     if (!stageIntroState) {
-        draw_text(15, 9, eraLabel[stage], 1);                            /* Row 15: RED A.D. yyyy */
+        draw_text(17, 9, eraLabel[stage], 1);                            /* Row 17: RED A.D. yyyy (cleanly below plane) */
         char stagebuf[8];
         stagebuf[0] = 'S'; stagebuf[1] = 'T'; stagebuf[2] = 'A';
         stagebuf[3] = 'G'; stagebuf[4] = 'E'; stagebuf[5] = ' ';
         stagebuf[6] = (char)('1' + (stage & 0xF)); stagebuf[7] = 0;
-        draw_text(19, 10, stagebuf, 9);                                  /* Row 19: WHITE STAGE n */
+        draw_text(21, 10, stagebuf, 9);                                  /* Row 21: WHITE STAGE n */
     } else {
-        draw_text(15, 11, sReady, 9);                                    /* Row 15: white READY */
+        draw_text(17, 11, sReady, 9);                                    /* Row 17: white READY (cleanly below plane) */
     }
 }
 
@@ -2432,8 +2432,8 @@ int main(void) {
                 if (--announceT == 0) {
                     /* Erase announce text only (sky and clouds remain undisturbed) */
                     draw_text(11, 10, "        ", 0);
-                    draw_text(15, 9, "         ", 0);
-                    draw_text(19, 10, "       ", 0);
+                    draw_text(17, 9, "         ", 0);
+                    draw_text(21, 10, "       ", 0);
                     stageIntroState = 1;
                     state = 1;
                 }
