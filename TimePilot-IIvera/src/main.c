@@ -804,9 +804,22 @@ static void setup_sprites(void) {
 }
 
 static void upload_pcm_to_vram(void) {
-    /* Stream pcm.blob into VRAM Bank 0 VRAM_AUDIO_BASE */
+    /* 1. Stream Bank 0 audio blob ($1000..$FE58) */
     vera_set_addr(VERA_INC_BANK0, VRAM_AUDIO_BASE);
     uint32_t off = 0;
+    while (off < PCM_BANK0_BYTES) {
+        uint8_t *chunk = disk_ensure(PCM_START_BLOCK, PCM_TOTAL_BYTES, off);
+        uint16_t in_blk = 512 - (uint16_t)(off & 511);
+        uint16_t rem = (uint16_t)(PCM_BANK0_BYTES - off);
+        uint16_t n = (rem < in_blk) ? rem : in_blk;
+        for (uint16_t i = 0; i < n; i++) {
+            VERA.data0 = chunk[i];
+        }
+        off += n;
+    }
+
+    /* 2. Stream Bank 1 audio blob ($2800..$7616) */
+    vera_set_addr(VERA_INC_BANK1, VRAM_AUDIO_BANK1_BASE);
     while (off < PCM_TOTAL_BYTES) {
         uint8_t *chunk = disk_ensure(PCM_START_BLOCK, PCM_TOTAL_BYTES, off);
         uint16_t in_blk = 512 - (uint16_t)(off & 511);
@@ -919,6 +932,13 @@ static void spawn_ebullet(uint16_t x, uint16_t y, uint8_t speed) {
             uint8_t dims = (stage == 0) ? 0 : 0x50;
             uint16_t pat = (stage == 0) ? PAT_EBULLET : PAT_WEAPON;
             set_sprite(SPR_EBULLET_BASE + i, pat, x, y, 1, dims);
+            if (speed == 1) {
+                audioPlaySource(AUDIO_BOMB);
+            } else if (stage >= 2) {
+                audioPlaySource(AUDIO_ROCKET_LAUNCH);
+            } else {
+                audioPlaySource(AUDIO_ENEMY_SHOOT);
+            }
             return;
         }
     }

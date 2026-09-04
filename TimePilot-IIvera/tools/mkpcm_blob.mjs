@@ -1,5 +1,7 @@
-// mkpcm_blob.mjs — Downsample the 20 CX16 Time Pilot .pcm samples to ~6.5 kHz
-// (VERA audio.rate = 17) to fit within VERA VRAM Bank 0 ($02000..$0FFFF, 56KB).
+// mkpcm_blob.mjs — Downsample CX16 Time Pilot .pcm samples to ~6.5 kHz
+// (VERA audio.rate = 17) to fit within VERA VRAM Bank 0 and Bank 1.
+// Bank 0 ($1000..$FE58): Opening theme (8.03s) + Big Explosion (1.37s)
+// Bank 1 ($2800..$7241): Coin drop, bomb whistle, rocket launch, wave alert, boss audio
 // Emits build/pcm.blob and src/audio_table.h.
 import fs from "fs"
 import path from "path"
@@ -13,8 +15,10 @@ fs.mkdirSync(buildDir, { recursive: true })
 
 const PCM_START_BLOCK = 200
 const BLOCK_SIZE = 512
-const VRAM_AUDIO_BASE = 0x1000  // Bank 0 offset ($1000..$FFFF is 60KB, $0000..$0FFF is Layer 0 map)
+const VRAM_AUDIO_BASE = 0x1000       // Bank 0 offset ($1000..$FFFF is 60KB)
 const VRAM_AUDIO_LIMIT = 65536 - VRAM_AUDIO_BASE  // 61,440 bytes
+const VRAM_AUDIO_BANK1_BASE = 0x2800 // Bank 1 offset ($2800..$7FFF is 22KB free)
+const VRAM_AUDIO_BANK1_LIMIT = 0x8000 - VRAM_AUDIO_BANK1_BASE // 22,528 bytes
 
 // Target rate: ~6485 Hz (VERA audio.rate = 17: 48828.125 * 17 / 128 = 6484.7 Hz)
 const VERA_PCM_RATE = 17
@@ -22,26 +26,26 @@ const SRC_RATE = 12207
 const DST_RATE = Math.round(48828.125 * VERA_PCM_RATE / 128)
 
 const SOURCES = [
-  { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      maxSec: 0 },
-  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    maxSec: 8.05, tailSec: 0.0 },
-  { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     maxSec: 0 },
-  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    maxSec: 0 },
-  { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  maxSec: 0 },
-  { name: "AUDIO_ROCKET_FLY",    file: "rocket_fly.pcm",    maxSec: 0 },
-  { name: "AUDIO_BOSSL0",        file: "bossl0.pcm",        maxSec: 0 },
-  { name: "AUDIO_BOSSL1",        file: "bossl1.pcm",        maxSec: 0 },
-  { name: "AUDIO_BOSSL2",        file: "bossl2.pcm",        maxSec: 0 },
-  { name: "AUDIO_BOSSL3",        file: "bossl3.pcm",        maxSec: 0 },
-  { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm", maxSec: 0 },
-  { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm", maxSec: 0 },
-  { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   maxSec: 0 },
-  { name: "AUDIO_BOMB",          file: "bomb.pcm",          maxSec: 0 },
-  { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", maxSec: 0 },
-  { name: "AUDIO_PICKUP",        file: "pickup.pcm",        maxSec: 0 },
-  { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    maxSec: 0 },
-  { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    maxSec: 0 },
-  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", maxSec: 1.38, tailSec: 0.0 },
-  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      maxSec: 0 },
+  { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      bank: 1, maxSec: 0.45 },
+  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    bank: 0, maxSec: 8.05, tailSec: 0.0 },
+  { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     bank: 0, maxSec: 0 },
+  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    bank: 0, maxSec: 0 },
+  { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  bank: 0, maxSec: 0 },
+  { name: "AUDIO_ROCKET_FLY",    file: "rocket_fly.pcm",    bank: 1, maxSec: 0.30, loops: 1 },
+  { name: "AUDIO_BOSSL0",        file: "bossl0.pcm",        bank: 1, maxSec: 0.20, loops: 1 },
+  { name: "AUDIO_BOSSL1",        file: "bossl1.pcm",        bank: 1, maxSec: 0.55, loops: 1 },
+  { name: "AUDIO_BOSSL2",        file: "bossl2.pcm",        bank: 1, maxSec: 0.17, loops: 1 },
+  { name: "AUDIO_BOSSL3",        file: "bossl3.pcm",        bank: 1, maxSec: 0.20, loops: 1 },
+  { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm", bank: 0, maxSec: 0 },
+  { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm", bank: 0, maxSec: 0 },
+  { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   bank: 0, maxSec: 0 },
+  { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 1, maxSec: 0.60 },
+  { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", bank: 1, maxSec: 0.35 },
+  { name: "AUDIO_PICKUP",        file: "pickup.pcm",        bank: 0, maxSec: 0 },
+  { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    bank: 0, maxSec: 0 },
+  { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    bank: 1, maxSec: 0.35 },
+  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", bank: 0, maxSec: 1.38, tailSec: 0.0 },
+  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      bank: 0, maxSec: 0 },
 ]
 
 function processPCM(raw, maxSec, tailSec) {
@@ -104,56 +108,86 @@ function processPCM(raw, maxSec, tailSec) {
   return res
 }
 
-const blob = []
-let offset = 0
-const rows = []
+// Process Bank 0 samples
+const bank0Blob = []
+let bank0Offset = 0
+const bank0Rows = new Map()
 
-for (const s of SOURCES) {
+for (const s of SOURCES.filter(x => x.bank === 0)) {
   if (s.maxSec === 0) {
-    rows.push({ ...s, start: VRAM_AUDIO_BASE + offset, length: 0, loops: 0 })
+    bank0Rows.set(s.name, { ...s, bank: 0, start: 0, length: 0, loops: 0 })
     continue
   }
   const p = path.join(cx16Root, "audio", s.file)
   if (!fs.existsSync(p)) throw new Error(`Missing PCM sample: ${p}`)
   const raw = new Uint8Array(fs.readFileSync(p))
-
   const processed = processPCM(raw, s.maxSec, s.tailSec || 0)
-  rows.push({ ...s, start: VRAM_AUDIO_BASE + offset, length: processed.length, loops: s.loops ? 1 : 0 })
-  blob.push(processed)
-  offset += processed.length
+  bank0Rows.set(s.name, { ...s, bank: 0, start: VRAM_AUDIO_BASE + bank0Offset, length: processed.length, loops: s.loops ? 1 : 0 })
+  bank0Blob.push(processed)
+  bank0Offset += processed.length
 }
 
-const total = offset
-if (total > VRAM_AUDIO_LIMIT) {
-  throw new Error(`PCM blob size ${total} exceeds VRAM limit ${VRAM_AUDIO_LIMIT}!`)
+if (bank0Offset > VRAM_AUDIO_LIMIT) {
+  throw new Error(`Bank 0 PCM blob size ${bank0Offset} exceeds limit ${VRAM_AUDIO_LIMIT}!`)
 }
 
-fs.writeFileSync(path.join(buildDir, "pcm.blob"), Buffer.concat(blob))
-const numBlocks = Math.ceil(total / BLOCK_SIZE)
+// Process Bank 1 samples
+const bank1Blob = []
+let bank1Offset = 0
+const bank1Rows = new Map()
+
+for (const s of SOURCES.filter(x => x.bank === 1)) {
+  if (s.maxSec === 0) {
+    bank1Rows.set(s.name, { ...s, bank: 1, start: 0, length: 0, loops: 0 })
+    continue
+  }
+  const p = path.join(cx16Root, "audio", s.file)
+  if (!fs.existsSync(p)) throw new Error(`Missing PCM sample: ${p}`)
+  const raw = new Uint8Array(fs.readFileSync(p))
+  const processed = processPCM(raw, s.maxSec, s.tailSec || 0)
+  bank1Rows.set(s.name, { ...s, bank: 1, start: VRAM_AUDIO_BANK1_BASE + bank1Offset, length: processed.length, loops: s.loops ? 1 : 0 })
+  bank1Blob.push(processed)
+  bank1Offset += processed.length
+}
+
+if (bank1Offset > VRAM_AUDIO_BANK1_LIMIT) {
+  throw new Error(`Bank 1 PCM blob size ${bank1Offset} exceeds limit ${VRAM_AUDIO_BANK1_LIMIT}!`)
+}
+
+// Combine both blobs into single pcm.blob on disk
+const totalBlob = Buffer.concat([...bank0Blob, ...bank1Blob])
+fs.writeFileSync(path.join(buildDir, "pcm.blob"), totalBlob)
+const numBlocks = Math.ceil(totalBlob.length / BLOCK_SIZE)
 
 const hex16 = (n) => "0x" + n.toString(16).toUpperCase().padStart(4, "0")
 let header = [
   "// AUTO-GENERATED by tools/mkpcm_blob.mjs — do not edit.",
-  `// Time Pilot IIvera 6.5kHz PCM table resident in VRAM Bank 0 ($${VRAM_AUDIO_BASE.toString(16).toUpperCase()}..$0FFFF).`,
+  `// Time Pilot IIvera 6.5kHz PCM table (Bank 0: $${VRAM_AUDIO_BASE.toString(16).toUpperCase()}, Bank 1: $${VRAM_AUDIO_BANK1_BASE.toString(16).toUpperCase()}).`,
   "#pragma once",
   "#include <stdint.h>",
-  "typedef struct { uint16_t start; uint16_t length; uint8_t loops; } TpAudioData;",
+  "typedef struct { uint8_t bank; uint16_t start; uint16_t length; uint8_t loops; } TpAudioData;",
   "#define NUM_AUDIO_SOURCES 20",
   `#define VERA_PCM_RATE ${VERA_PCM_RATE}  // ~${DST_RATE} Hz (25MHz/512 * ${VERA_PCM_RATE}/128)`,
   `#define VRAM_AUDIO_BASE 0x${VRAM_AUDIO_BASE.toString(16).toUpperCase()}`,
+  `#define VRAM_AUDIO_BANK1_BASE 0x${VRAM_AUDIO_BANK1_BASE.toString(16).toUpperCase()}`,
   `#define PCM_START_BLOCK ${PCM_START_BLOCK}`,
-  `#define PCM_TOTAL_BYTES ${total}`,
+  `#define PCM_BANK0_BYTES ${bank0Offset}`,
+  `#define PCM_BANK1_BYTES ${bank1Offset}`,
+  `#define PCM_TOTAL_BYTES ${totalBlob.length}`,
   `#define PCM_NUM_BLOCKS  ${numBlocks}`,
   "",
   "static const TpAudioData audioData[NUM_AUDIO_SOURCES] = {",
 ]
-for (const r of rows) {
-  header.push(`    { ${hex16(r.start)}, ${hex16(r.length)}, ${r.loops} }, // ${r.name}`)
+
+for (const s of SOURCES) {
+  const r = (s.bank === 0) ? bank0Rows.get(s.name) : bank1Rows.get(s.name)
+  header.push(`    { ${r.bank}, ${hex16(r.start)}, ${hex16(r.length)}, ${r.loops} }, // ${r.name}`)
 }
 header.push("};")
 header.push("")
 fs.writeFileSync(path.join(projectRoot, "src", "audio_table.h"), header.join("\n"))
 
-console.log(`pcm.blob: ${total} bytes (${numBlocks} blocks) -> build/pcm.blob`)
-console.log(`audio_table.h written (${rows.length} sources).`)
-console.log(`  VRAM Bank 0 resident: $${VRAM_AUDIO_BASE.toString(16).toUpperCase()}..$${(VRAM_AUDIO_BASE + total).toString(16).toUpperCase()} (free in Bank 0: ${VRAM_AUDIO_LIMIT - total} bytes)`)
+console.log(`pcm.blob: ${totalBlob.length} bytes (${numBlocks} blocks) -> build/pcm.blob`)
+console.log(`  Bank 0: ${bank0Offset} bytes ($${VRAM_AUDIO_BASE.toString(16).toUpperCase()}..$${(VRAM_AUDIO_BASE + bank0Offset).toString(16).toUpperCase()}, free: ${VRAM_AUDIO_LIMIT - bank0Offset} bytes)`)
+console.log(`  Bank 1: ${bank1Offset} bytes ($${VRAM_AUDIO_BANK1_BASE.toString(16).toUpperCase()}..$${(VRAM_AUDIO_BANK1_BASE + bank1Offset).toString(16).toUpperCase()}, free: ${VRAM_AUDIO_BANK1_LIMIT - bank1Offset} bytes)`)
+console.log(`audio_table.h written (${SOURCES.length} sources).`)

@@ -53,23 +53,27 @@ static void psg_silence(uint8_t ch) {
 #define VERA_PCM_RATE_REG (*(volatile uint8_t *)(VERA_BASE + 0x1C))
 #define VERA_PCM_DATA_REG (*(volatile uint8_t *)(VERA_BASE + 0x1D))
 
+static uint8_t  pcmBank      = 0;
 static uint16_t pcmStartAddr = 0;
 static uint16_t pcmTotalLen  = 0;
 static uint8_t  pcmActive    = 0;
 static uint16_t pcmOffset    = 0;
+static uint8_t  pcmLoops     = 0;
 
-static void pcm_play(uint16_t vram_addr, uint16_t length) {
+static void pcm_play(uint8_t bank, uint16_t vram_addr, uint16_t length, uint8_t loops) {
     if (length == 0) return;
     pcmActive = 1;
+    pcmBank = bank;
     pcmStartAddr = vram_addr;
     pcmTotalLen = length;
     pcmOffset = 0;
+    pcmLoops = loops;
     VERA_PCM_RATE_REG = 0;
     VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
 
     /* Pre-buffer up to 2048 bytes (or full length if shorter) directly into FIFO */
     uint16_t pre = (length > 2048) ? 2048 : length;
-    vera_set_addr(VERA_INC_BANK0, vram_addr);
+    vera_set_addr(bank ? VERA_INC_BANK1 : VERA_INC_BANK0, vram_addr);
     for (uint16_t i = 0; i < pre; i++) {
         VERA_PCM_DATA_REG = VERA.data0;
     }
@@ -103,12 +107,14 @@ void audioCleanup(void) {
 }
 
 int8_t audioIsSourcePlaying(int8_t source) {
-    if (source == AUDIO_GAME_START || source == AUDIO_BIG_EXPLOSION) return pcmActive;
+    if (source >= 0 && source < NUM_AUDIO_SOURCES && audioData[source].length > 0) {
+        return pcmActive && (activePlaying == source);
+    }
     return (activePlaying == source);
 }
 
 void audioStopSource(int8_t source) {
-    if (source < 0 || activePlaying == source || source == AUDIO_GAME_START || source == AUDIO_BIG_EXPLOSION) {
+    if (source < 0 || activePlaying == source) {
         audioInit();
     }
 }
@@ -119,16 +125,11 @@ void audioPlaySource(int8_t source) {
 
     switch (source) {
     case AUDIO_COINDROP:
-        /* Crisp arcade coin drop metallic ping: ~1560Hz */
-        sfxType[CH_PICKUP] = 2;
-        sfxTimer[CH_PICKUP] = 24;
-        sfxFreq[CH_PICKUP] = 1560;
-        sfxVol[CH_PICKUP] = 0x3F;
-        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x10);
+        pcm_play(audioData[AUDIO_COINDROP].bank, audioData[AUDIO_COINDROP].start, audioData[AUDIO_COINDROP].length, audioData[AUDIO_COINDROP].loops);
         break;
 
     case AUDIO_GAME_START:
-        pcm_play(audioData[AUDIO_GAME_START].start, audioData[AUDIO_GAME_START].length);
+        pcm_play(audioData[AUDIO_GAME_START].bank, audioData[AUDIO_GAME_START].start, audioData[AUDIO_GAME_START].length, audioData[AUDIO_GAME_START].loops);
         break;
 
     case AUDIO_NEXT_LEVEL:
@@ -186,7 +187,7 @@ void audioPlaySource(int8_t source) {
         /* Authentic Arcade PCM Big Explosion for player crash, boss, and bomber! */
         psg_silence(CH_EXPL);
         psg_silence(CH_ENEMY);
-        pcm_play(audioData[AUDIO_BIG_EXPLOSION].start, audioData[AUDIO_BIG_EXPLOSION].length);
+        pcm_play(audioData[AUDIO_BIG_EXPLOSION].bank, audioData[AUDIO_BIG_EXPLOSION].start, audioData[AUDIO_BIG_EXPLOSION].length, audioData[AUDIO_BIG_EXPLOSION].loops);
         break;
 
     case AUDIO_PICKUP:
@@ -208,39 +209,31 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_BOMB:
-        /* Whistling descending bomb */
-        sfxType[CH_ENEMY] = 2;
-        sfxTimer[CH_ENEMY] = 20;
-        sfxFreq[CH_ENEMY] = 2200;
-        sfxVol[CH_ENEMY] = 0x3A;
-        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x20);
+        /* Authentic WWII Heavy Bomber falling bomb whistle PCM */
+        pcm_play(audioData[AUDIO_BOMB].bank, audioData[AUDIO_BOMB].start, audioData[AUDIO_BOMB].length, audioData[AUDIO_BOMB].loops);
+        break;
+
+    case AUDIO_ROCKET_LAUNCH:
+        /* Authentic 1982 Supersonic guided missile rocket launch PCM */
+        pcm_play(audioData[AUDIO_ROCKET_LAUNCH].bank, audioData[AUDIO_ROCKET_LAUNCH].start, audioData[AUDIO_ROCKET_LAUNCH].length, audioData[AUDIO_ROCKET_LAUNCH].loops);
+        break;
+
+    case AUDIO_ROCKET_FLY:
+        /* Authentic 1982 guided missile tracking engine buzz PCM */
+        pcm_play(audioData[AUDIO_ROCKET_FLY].bank, audioData[AUDIO_ROCKET_FLY].start, audioData[AUDIO_ROCKET_FLY].length, audioData[AUDIO_ROCKET_FLY].loops);
         break;
 
     case AUDIO_BOSSL0:
     case AUDIO_BOSSL1:
     case AUDIO_BOSSL2:
     case AUDIO_BOSSL3:
-        /* Boss heartbeat pulse */
-        sfxType[CH_PICKUP] = 3;
-        sfxTimer[CH_PICKUP] = 10;
-        sfxFreq[CH_PICKUP] = 180;
-        sfxVol[CH_PICKUP] = 0x30;
-        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x80); /* Triangle */
+        /* Authentic Arcade Boss Engine Roar / Air-raid siren PCM */
+        pcm_play(audioData[source].bank, audioData[source].start, audioData[source].length, audioData[source].loops);
         break;
 
     case AUDIO_WAVE_START:
-        /* Stage clear fanfare: rising pulse chord */
-        sfxType[CH_PICKUP] = 1;
-        sfxTimer[CH_PICKUP] = 20;
-        sfxFreq[CH_PICKUP] = 680;  /* A4 */
-        sfxVol[CH_PICKUP] = 0x3F;
-        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
-        /* Add a harmony tone on CH_PLAYER */
-        sfxType[CH_PLAYER] = 0;
-        sfxTimer[CH_PLAYER] = 20;
-        sfxFreq[CH_PLAYER] = 1020; /* E5 - major third up */
-        sfxVol[CH_PLAYER] = 0x38;
-        psg_write(CH_PLAYER, sfxFreq[CH_PLAYER], 0xC0 | sfxVol[CH_PLAYER], 0x20);
+        /* Authentic 4-plane formation attack siren PCM */
+        pcm_play(audioData[AUDIO_WAVE_START].bank, audioData[AUDIO_WAVE_START].start, audioData[AUDIO_WAVE_START].length, audioData[AUDIO_WAVE_START].loops);
         break;
 
     case AUDIO_TIMEWARP:
@@ -269,11 +262,14 @@ void audioServiceAudio(void) {
         if (pcmOffset < pcmTotalLen) {
             uint16_t target = pcmOffset + 140;
             if (target > pcmTotalLen) target = pcmTotalLen;
-            vera_set_addr(VERA_INC_BANK0, (uint16_t)(pcmStartAddr + pcmOffset));
+            vera_set_addr(pcmBank ? VERA_INC_BANK1 : VERA_INC_BANK0, (uint16_t)(pcmStartAddr + pcmOffset));
             while (pcmOffset < target && !(VERA_PCM_CTRL_REG & 0x80)) {
                 VERA_PCM_DATA_REG = VERA.data0;
                 pcmOffset++;
             }
+        } else if (pcmLoops) {
+            /* Looping sample (e.g. boss engines / rocket fly) */
+            pcmOffset = 0;
         } else if (VERA_PCM_CTRL_REG & 0x40) {
             /* FIFO completely drained — full audio track finished playing naturally */
             pcmActive = 0;
