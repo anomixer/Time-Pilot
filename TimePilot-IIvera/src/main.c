@@ -738,8 +738,12 @@ static void update_propeller(void) {
 
 /* ------------------------- Setup ------------------------- */
 static const uint32_t enemyArtOff[5] = {
-    ART_ENEMY1_FRAMES_OFF, ART_ENEMY1_FRAMES_OFF, ART_ENEMY2_FRAMES_OFF,
+    ART_ENEMY0_FRAMES_OFF, ART_ENEMY1_FRAMES_OFF, ART_ENEMY2_FRAMES_OFF,
     ART_ENEMY3_FRAMES_OFF, ART_ENEMY4_FRAMES_OFF
+};
+static const uint16_t enemyArtLen[5] = {
+    ART_ENEMY0_FRAMES_LEN, ART_ENEMY1_FRAMES_LEN, ART_ENEMY2_FRAMES_LEN,
+    ART_ENEMY3_FRAMES_LEN, ART_ENEMY4_FRAMES_LEN
 };
 static const uint32_t bossArtOff[5] = {
     ART_BOSS0_FRAMES_OFF, ART_BOSS1_FRAMES_OFF, ART_BOSS2_FRAMES_OFF,
@@ -753,8 +757,7 @@ static const uint16_t wepArtLen[5] = {
 };
 
 static void upload_stage_art(void) {
-    uint16_t esz = (stage == 4) ? 64 : 256;
-    upload_stream_frames(PAT_ENEMY, enemyArtOff[stage], 8, esz);
+    upload_pattern_stream(PAT_ENEMY, enemyArtOff[stage], enemyArtLen[stage]);
     upload_pattern_stream(PAT_BOSS, bossArtOff[stage], (stage == 4) ? 1024 : 4096);
 
     static int8_t lastCloudEra = -1;
@@ -836,9 +839,28 @@ static void upload_pcm_to_vram(void) {
 }
 
 /* ------------------------- Gameplay ------------------------- */
-static uint8_t enemy_dims(void)   { return (stage == 4) ? 0 : 0x50; }   /* 2001 = 8x8 */
-static uint8_t enemy_shift(void)  { return 2; }   /* 8 enemy frames */
-static int8_t  stageBossAudio(void) { return (int8_t)(AUDIO_BOSSL0 + (stage & 3)); }
+static uint16_t get_enemy_pat(uint8_t i) {
+    uint8_t f;
+    if (stage == 2) {
+        /* Stage 2 (1970): 9-frame helicopter rotation mapping */
+        static const uint8_t heliMap[32] = {
+            0, 0, 1, 1, 2, 2, 3, 3,
+            4, 5, 5, 6, 6, 7, 7, 8,
+            8, 8, 7, 7, 6, 6, 5, 5,
+            4, 3, 3, 2, 2, 1, 1, 0
+        };
+        f = heliMap[(enemyFacing[i] - 8) & 31];
+    } else if (stage == 4) {
+        /* Stage 4 (2001): 4-frame pulsating space UFO animation */
+        f = (uint8_t)(((frameCount + (i << 2)) >> 2) & 3);
+    } else {
+        /* Stage 0 (1910 biplane), Stage 1 (1940 monoplane), Stage 3 (1982 jet): 8 rotation frames */
+        f = (uint8_t)(((enemyFacing[i] - 8) & 31) >> 2);
+    }
+    return (uint16_t)(PAT_ENEMY + (uint16_t)f * 256);
+}
+
+static int8_t stageBossAudio(void) { return (int8_t)(AUDIO_BOSSL0 + (stage & 3)); }
 
 static void check_extra_life(void) {
     if (score >= nextExtraLife) {
@@ -868,10 +890,7 @@ static void spawn_enemy(void) {
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
             enemyTimer[i] = (uint16_t)(30 + ((i * 13) % 25));
-            uint8_t eDims = enemy_dims();
-            uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-            uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
-            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff, (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
+            set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
             return;
         }
     }
@@ -893,10 +912,7 @@ static void spawn_wave(void) {
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
             enemyTimer[i] = (uint16_t)(25 + count * 8);
-            uint8_t eDims = enemy_dims();
-            uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-            uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
-            set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff, (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, eDims);
+            set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
             count++;
             waveEnemiesAlive++;
             if (count >= 4) break;
@@ -1004,8 +1020,7 @@ static void update_game(void) {
     uint8_t i;
     int16_t scrollDx = -(int16_t)velDx[facing];
     int16_t scrollDy = -(int16_t)velDy[facing];
-    uint8_t eDims = enemy_dims();
-    uint8_t eW = (stage == 4) ? 8 : 16;
+    uint8_t eW = 16;
 
     /* Player invulnerability flicker */
     if (playerInvuln > 0) {
@@ -1261,10 +1276,8 @@ static void update_game(void) {
                         enemyFacing[i] = (uint8_t)((enemyFacing[i] - 1) & 31); /* turn counter-clockwise */
                     }
                 }
-                /* Update sprite rotation frame */
-                uint8_t f = (uint8_t)((((enemyFacing[i] - 8) & 31) >> enemy_shift()));
-                uint16_t fOff = (stage == 4) ? ((uint16_t)f << 6) : ((uint16_t)f << 8);
-                set_sprite_pat(SPR_ENEMY_BASE + i, PAT_ENEMY + fOff);
+                /* Update sprite rotation / animation frame */
+                set_sprite_pat(SPR_ENEMY_BASE + i, get_enemy_pat(i));
             }
 
             /* 2. Move with world scroll + enemy's OWN engine thrust */
