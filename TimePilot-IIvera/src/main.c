@@ -1770,7 +1770,7 @@ static void init_game(uint8_t players_mode) {
 
     players[0].score = 0;
     players[0].lives = LIVES_MAX;
-    players[0].stage = 0;
+    players[0].stage = stage;
     players[0].enemiesKilled = 0;
     players[0].nextExtraLife = 10000;
     players[0].alive = 1;
@@ -1778,7 +1778,7 @@ static void init_game(uint8_t players_mode) {
     if (numPlayers == 2) {
         players[1].score = 0;
         players[1].lives = LIVES_MAX;
-        players[1].stage = 0;
+        players[1].stage = stage;
         players[1].enemiesKilled = 0;
         players[1].nextExtraLife = 10000;
         players[1].alive = 1;
@@ -1791,7 +1791,6 @@ static void init_game(uint8_t players_mode) {
     facing = 8; /* Facing RIGHT (matches cx16-2.jpg and arcade original) */
     score = 0;
     lives = LIVES_MAX;
-    stage = 0;
     enemiesKilled = 0;
     nextExtraLife = 10000;
     killMultiplier = 1;
@@ -2294,15 +2293,13 @@ int main(void) {
                             VERA.display.video = 0x11;
                             hide_all_sprites();
 
-                            init_game(1);
                             stage = 1;                /* Stage 1 = A.D. 1940 (Green Sky) */
-                            players[0].stage = 1;
                             upload_stage_art();       /* Upload 1940 Bomber, weapons, green fighters, expl32 */
-                            set_stage_palette();
 
-                            /* Green counter-clockwise radar sweep to wipe title text away! */
+                            /* Green counter-clockwise radar sweep wipes title screen directly to green! */
                             screen_wipe_to_sky(1);
 
+                            init_game(1);
                             paint_status_bar();
                             g_hudDirty = 1;
                             draw_hud();
