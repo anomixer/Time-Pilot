@@ -214,7 +214,7 @@ static uint8_t  playerInvuln = 0;       /* Invulnerability countdown (frames) */
 
 /* Propeller animation via palette cycling */
 static const uint16_t colorPaletteProps[3] = { 0x0680, 0x00C0, 0x0FFF };
-static const uint16_t colorPaletteSky[5]   = { 0x0006, 0x0056, 0x0065, 0x0505, 0x0000 };
+static const uint16_t colorPaletteSky[5]   = { 0x0006, 0x0052, 0x0063, 0x0505, 0x0000 };
 static uint8_t  propState = 0;
 
 /* Multiplier scoring: 0.5s (30 frames) kill window (100 -> 200 -> 300 -> 400 pts) */
@@ -1012,6 +1012,8 @@ static void update_game(void) {
                 isDemoMode = 0;
                 draw_text(0, 9, "         ", 0);
                 hide_all_sprites();
+                stage = 0;
+                upload_stage_art();
                 screen_wipe_to_sky(0);    /* Blue counter-clockwise radar wipe to clean playfield! */
                 set_black_palette();
                 paint_screen();
@@ -2283,7 +2285,7 @@ int main(void) {
                         attractScreen = 0;
                         if (++attractCycleCount >= 3) {
                             /* Exactly 3 full cycles of Control -> Hi Score Table with no input: launch Demo!
-                             * DO NOT manually clear text! screen_wipe_to_sky(0) sweeps it away with blue radar! */
+                             * Stage 1 = A.D. 1940 (Green Sky, WWII dogfight) */
                             attractCycleCount = 0;
                             isDemoMode = 1;
                             demoIndex = 0;
@@ -2292,14 +2294,15 @@ int main(void) {
                             VERA.display.video = 0x11;
                             hide_all_sprites();
 
-                            stage = 1;                /* Stage 1 = A.D. 1940 (Sea-Green Sky) */
+                            init_game(1);
+                            stage = 1;                /* Stage 1 = A.D. 1940 (Green Sky) */
+                            players[0].stage = 1;
                             upload_stage_art();       /* Upload 1940 Bomber, weapons, green fighters, expl32 */
                             set_stage_palette();
 
-                            /* Blue counter-clockwise radar sweep to wipe title text away! */
-                            screen_wipe_to_sky(0);
+                            /* Green counter-clockwise radar sweep to wipe title text away! */
+                            screen_wipe_to_sky(1);
 
-                            init_game(1);
                             paint_status_bar();
                             g_hudDirty = 1;
                             draw_hud();
@@ -2394,6 +2397,8 @@ int main(void) {
                     isDemoMode = 0;
                     draw_text(0, 9, "         ", 0);
                     hide_all_sprites();
+                    stage = 0;
+                    upload_stage_art();
                     screen_wipe_to_sky(0);    /* Blue counter-clockwise radar sweep! */
                     set_black_palette();
                     paint_screen();
@@ -2411,6 +2416,8 @@ int main(void) {
                     isDemoMode = 0;
                     draw_text(0, 9, "         ", 0);
                     hide_all_sprites();
+                    stage = 0;
+                    upload_stage_art();
                     screen_wipe_to_sky(0);    /* Blue counter-clockwise radar sweep! */
                     set_black_palette();
                     paint_screen();
