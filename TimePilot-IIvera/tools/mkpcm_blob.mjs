@@ -27,7 +27,7 @@ const DST_RATE = Math.round(48828.125 * VERA_PCM_RATE / 128)
 
 const SOURCES = [
   { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      bank: 1, maxSec: 0.45 },
-  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    bank: 0, maxSec: 8.05, tailSec: 0.0 },
+  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    bank: 0, maxSec: 7.10, tailSec: 0.0 },
   { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     bank: 0, maxSec: 0 },
   { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    bank: 0, maxSec: 0 },
   { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  bank: 0, maxSec: 0 },
@@ -39,7 +39,7 @@ const SOURCES = [
   { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm", bank: 0, maxSec: 0 },
   { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm", bank: 0, maxSec: 0 },
   { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   bank: 0, maxSec: 0 },
-  { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 1, maxSec: 0.60 },
+  { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 0, maxSec: 0.60 },
   { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", bank: 1, maxSec: 0.35 },
   { name: "AUDIO_PICKUP",        file: "pickup.pcm",        bank: 0, maxSec: 0 },
   { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    bank: 0, maxSec: 0 },

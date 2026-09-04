@@ -175,8 +175,8 @@
   * **小兵爆炸破片 (`AUDIO_ENEMY_EXPLODE`)**：結合 Channel 2（白噪音急速降頻）與 Channel 5（鋸齒波低頻重低音震波），打擊感拳拳到肉！
   * **敵彈啾啾聲、跳傘員救援三音琶音、關卡凱旋和弦**：多聲道硬體獨立合成，毫無延遲，擊落再多敵機也絕不卡音！
 * **雙 Bank VRAM 常駐 12 首街機 PCM 音訊（100% 零磁碟運行串流）**：
-  * **Bank 0 (`$1000..$FE58`)**：開場主題曲 (`AUDIO_GAME_START`, 8.05 秒完整尾韻) 與重低音大爆炸 (`AUDIO_BIG_EXPLOSION`, 1.38 秒正宗震撼爆炸)。
-  * **Bank 1 (`$1200..$7E7B`)**：投幣音效 (`AUDIO_COINDROP`)、四機突襲警報 (`AUDIO_WAVE_START`)、1940 轟炸機空投航彈呼嘯 (`AUDIO_BOMB`)、1970/1982 飛彈點火與巡航 (`AUDIO_ROCKET_LAUNCH` / `AUDIO_ROCKET_FLY`)、四大關卡 Boss 巨型母艦專屬警報 (`AUDIO_BOSSL0 ~ 3`)、以及**時空躍遷穿梭 PCM (`AUDIO_TIMEWARP`, 1.20 秒正宗原音)**。
+  * **Bank 0 (`$1000..$F5C4`, 58.8 KB)**：開場主題曲 (`AUDIO_GAME_START`, 7.10 秒完整尾韻無死音)、二戰轟炸機空投航彈呼嘯 (`AUDIO_BOMB`, 0.60 秒) 與重低音大爆炸 (`AUDIO_BIG_EXPLOSION`, 1.38 秒正宗震撼爆炸)，保有 2.6 KB 寬裕安全緩衝。
+  * **Bank 1 (`$1200..$6F64`, 23.9 KB)**：投幣音效 (`AUDIO_COINDROP`)、飛彈點火與巡航 (`AUDIO_ROCKET_LAUNCH` / `AUDIO_ROCKET_FLY`)、四機突襲警報 (`AUDIO_WAVE_START`)、四大關卡 Boss 巨型母艦專屬警報 (`AUDIO_BOSSL0 ~ 3`)、以及**時空躍遷穿梭 PCM (`AUDIO_TIMEWARP`, 1.20 秒正宗原音)**，保有 4.25 KB 充裕安全緩衝防禦精靈 RAM。
 * **智慧動態音量平衡**：
   * Boss 警報與巡航蜂鳴適度柔化（Vol 7/15），營造緊張大氣氛圍；激烈的雷射開火、近身爆炸與時空躍遷原音（Vol 13/15）清晰響亮，達到完美的聽覺平衡！
 

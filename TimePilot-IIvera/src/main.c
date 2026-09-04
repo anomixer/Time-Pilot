@@ -2402,7 +2402,7 @@ int main(void) {
             {
                 if (announceT == 0) {
                     if (isGameStartIntro && !isDemoMode) {
-                        announceT = 480;   /* 8.0s (480 frames @ 60Hz: full opening theme + trailing reverb) */
+                        announceT = 430;   /* ~7.15s (430 frames @ 60Hz: trimmed opening theme without dead silence) */
                         audioPlaySource(AUDIO_GAME_START);
                     } else {
                         announceT = 100;   /* ~1.6s brief era announce */
