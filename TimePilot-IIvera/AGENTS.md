@@ -120,42 +120,43 @@ STAGE CLEAR keeps reappearing.
 
 ---
 
-## Audio (VERA PCM, streamed from HDV)
+## Audio (Dual-Bank VRAM Resident PCM & 16-Channel PSG Chiptune Engine)
 
-- The 20 CX16 PCM samples (8-bit signed mono @ 12207 Hz) are concatenated into one blob on the
-  HDV (`build/pcm.blob`, block `PCM_START_BLOCK` = 200). `audioServiceAudio()` streams bytes from
-  that blob → the VERA PCM FIFO, refilling a 512-byte RAM window with MLI READ_BLOCK.
-- **VERA PCM is driven through SLOT-RELATIVE registers `$1B/$$1C/$1D`** — the apple2e.h `.audio`
-  C struct field is misaligned with the real VERA map, so we do NOT use it (see `src/audio.c`).
-  Rate = **64** for 12207 Hz on apple2ts (`48828 * 64/256`).
-- Priority model mirrors CX16: higher source index preempts lower; looping samples restart.
-
-> ⚠️ **Audio is currently DISABLED** via `#define AUDIO_ENABLED 0` in `src/audio.c`. It was turned
-> off to finish the gameplay (per-frame PCM FIFO feeding from the HDV was the main 1 MHz cost and
-> stalled the stage announce). To re-enable: set it to `1`, then rework the streaming to be
-> interrupt/batch-driven (veratest's `ENABLE_MUSIC_IRQ` pattern) so it doesn't block the main loop.
+- **100% Zero-Disk Runtime Audio**: All 11 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200). Zero disk I/O occurs during gameplay!
+  - **Bank 0 Resident (`$1000..$FE58`, 61,016 B)**: `AUDIO_GAME_START` (8.05s master opening theme) + `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). 424 bytes free headroom below `$FFFF`.
+  - **Bank 1 Resident (`$2800..$7616`, 19,990 B)**: 9 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_BOMB`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAVE_START`). 2,538 bytes safe buffer before sprite pattern RAM (`$8000`).
+- **Slot-Relative VERA PCM Hardware (`$1B / $1C / $1D`)**:
+  - Direct register writes to `VERA_PCM_CTRL_REG` (`$1B`), `VERA_PCM_RATE_REG` (`$1C`), `VERA_PCM_DATA_REG` (`$1D`).
+  - Pre-buffers up to 2,048 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~140 bytes per 60Hz vsync hook.
+- **16-Channel PSG Polyphonic Chiptune Synthesis**:
+  - Action sounds (player laser, enemy bullets, explosions, rescues) run on pure hardware PSG at `$1F9C0..$1F9FF`.
+  - **Dual-Voice Unison Laser (Channels 0 & 4)**: 50% pulse + 25% pulse unison doubling acoustic power (+6 dB) with 4-frame attack hold.
+  - **Dual-Voice Explosions (Channels 2 & 5)**: High-frequency white noise sweep paired with low-frequency sawtooth rumble for heavy arcade punch.
+- **Dynamic Master Volume Hierarchy**:
+  - Boss background sirens (`BOSSL0..3`): Volume 7/15 (~47%) — creates tension without masking player fire.
+  - Missiles & Bombs (`ROCKET_LAUNCH`, `BOMB`, `WAVE_START`): Volume 10/15.
+  - Opening theme & Coin drop (`GAME_START`, `COINDROP`): Volume 11/15.
+  - Giant Explosion (`BIG_EXPLOSION`): Volume 13/15.
 
 ---
 
 ## HDV Layout & CATALOG
 
-The game ships as a **ProDOS 8 HDV** (`TimePilot-IIvera.hdv`, 32 MB). Boot chain:
-ProDOS → BASIC.SYSTEM → Applesoft `STARTUP` → `BRUN MAIN.BIN`.
+The game ships as a standard **ProDOS 2.4.3 800KB HDV** (`TimePilot-IIvera.hdv`, 819,200 bytes, 1,600 blocks). Boot chain:
+ProDOS → BASIC.SYSTEM → Applesoft `STARTUP` → `BRUN MAIN.BIN` (or `MAIN4.BIN`).
 
 CATALOG lists (all are real ProDOS files):
 
 | File | Size | Blocks | Notes |
 |------|------|--------|-------|
-| MAIN.BIN | ~25.5 KB | 52 | Slot 2 core (type 0x06, load $2000, VERA at $C200) |
-| MAIN4.BIN | ~25.5 KB | 52 | Slot 4 core (type 0x06, load $2000, VERA at $C400) |
-| STARTUP | ~940 B | 3 | Applesoft BASIC launcher with Slot 2/4 hardware detection |
-| PCM1 / PCM2 / PCM3 | 128K + 128K + 84K | 257+257+169 | the audio blob (split: a ProDOS file caps at 256 index slots = 128 KB) |
-| ART | ~39 KB | 79 | the sprite-art blob |
+| MAIN.BIN | ~29.2 KB | 59 | Slot 2 core (type 0x06, load $1400, VERA at $C200) |
+| MAIN4.BIN | ~29.2 KB | 59 | Slot 4 core (type 0x06, load $1400, VERA at $C400) |
+| STARTUP | ~1.0 KB | 4 | Applesoft BASIC launcher with dual-slot VERA detection |
+| PCM | ~81.4 KB | 160 | The dual-bank audio blob (loaded to Bank 0 & Bank 1 at boot) |
+| ART | ~56.8 KB | 112 | The sprite-art blob (loaded to Bank 1 $8000..$FFFF) |
+| DEMO | ~1.5 KB | 4 | 1,472-frame attract mode input replay recording |
 
-The PCM/ART blobs are **registered as ProDOS "sapling" files** (index block + data blocks, same
-pattern as veratest's `/DATA` images) so CATALOG can list them — but their **data blocks stay at
-their fixed addresses** (`PCM_START_BLOCK`=200, `ART_START_BLOCK`=900), which the game reads
-directly via MLI. So they are both "visible files" AND directly addressable by block number.
+The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files** so CATALOG and ProDOS browsers list them cleanly, while their data blocks occupy fixed contiguous locations (`PCM_START_BLOCK`=200, `ART_START_BLOCK`=900, `DEMO_START_BLOCK`=1020) streamed directly via ProDOS MLI `$80`.
 
 ---
 
@@ -322,6 +323,15 @@ directly via MLI. So they are both "visible files" AND directly addressable by b
     - **Thrust & Trajectory Math Multiplication Elimination**: Replaced `((int16_t)velDx[enemyFacing[i]] * 5) / 4` with direct array lookup, and simplified Stage 3 rocket bullet velocity `velDx * 3 / 4` to bitshift `velDx >> 1`, eliminating all compiler `__mulhi3` and `__divhi3` software helper calls from active entity loops.
     - **Single-Unsigned Fast-Reject Collision Bounding Box**: Streamlined bullet-vs-enemy and enemy-vs-player bounding box tests using `(uint16_t)(ddx + 7) < (uint16_t)(eW + 7)` to reject 95% of non-colliding entities on the horizontal axis in a single instruction before evaluating vertical coordinates.
     - **Outcome**: Binary footprint shrank by 256 bytes down to **28,845 bytes** (`$1400..$84AF`), and active 4-plane formation waves run rock-solid at full 60 FPS without dropping a single frame!
+49. **Dual-Bank VRAM Resident PCM Architecture (`$1000..$FE58` Bank 0 & `$2800..$7616` Bank 1)**:
+    - **VRAM Memory Expansion**: Extended PCM resident storage across both VERA VRAM Banks:
+      - **Bank 0**: 61,016 bytes (`$1000..$FE58`) holding `AUDIO_GAME_START` (8.05s master theme) and `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). 424 bytes free headroom below `$FFFF`.
+      - **Bank 1**: 19,990 bytes (`$2800..$7616`) holding 9 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_BOMB`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAVE_START`). Leaves 2,538 bytes of safe headroom before sprite pattern RAM at `$8000`.
+    - **100% Zero-Disk Runtime Playback**: All 81,006 bytes of audio are streamed directly from HDV blocks 200..358 into VRAM during the initial boot loader, completely freeing the ProDOS MLI disk subsystem during gameplay.
+50. **Dual-Voice PSG Layering (+6 dB Boost) & Dynamic Volume Balancing**:
+    - **Dual-Voice Unison Laser (`CH_PLAYER` 0 + `CH_PLAYER2` 4)**: Coupled two synchronized pulse waves (50% pulse on Ch 0, 25% pulse on Ch 4) to double acoustic power (+6 dB). Implemented 4-frame full-volume attack hold for punchy, arcade-faithful laser fire.
+    - **Dual-Voice Explosions (`CH_EXPL` 2 + `CH_EXPL2` 5)**: Combined high-frequency white noise sweep with low-frequency sawtooth bass rumble for heavy body impact.
+    - **PCM Ambient Volume Hierarchy**: Calibrated PCM volumes (`BOSSL0..3` down to 7/15, `ROCKET_FLY` 7/15, `BOMB` & `ROCKET_LAUNCH` 10/15, `GAME_START` & `COINDROP` 11/15, `BIG_EXPLOSION` 13/15) so background sirens and effects sit harmoniously behind action sounds without drowning out PSG gunfire and explosions.
 
 ---
 
@@ -354,15 +364,14 @@ directly via MLI. So they are both "visible files" AND directly addressable by b
 - **Native Joystick Support & K/J Toggle**: Defaults to Joystick mode, title screen shows `[K]EYBOARD` and `[J]OYSTICK` with active highlight, PDL0/1 analog steering + PB0/1 fire.
 - **CX16 Pixel-Exact Visual Parity & Full Author Credits**: Pitch-black title/attract background (`cx16-1.jpg`), right-aligned ranking scores, Anomixer 2026 author credits, overlay protection on ranking screen, rows 11/15/19 stage announce around centered plane (`cx16-2.jpg`).
 - **1940 Sea-Green Sky Attract Demo Mode**: 1,472-frame replay recording, automatic launch on 4-cycle title idle, flashing `DEMO PLAY`, instant key/button break-out to real game.
-- VERA PCM audio engine + ProDOS MLI streaming (currently gated off — see Audio note above).
-- HDV packaging: MAIN.BIN + STARTUP + PCM1/2/3 + ART all visible in CATALOG.
+- **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 11 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
+- HDV packaging: MAIN.BIN + MAIN4.BIN + STARTUP + PCM + ART + DEMO all visible in CATALOG.
 
 ### Active / In progress
-- **Re-enable audio** cleanly: set `AUDIO_ENABLED=1` and move the PCM FIFO feeding to an
-  interrupt/batch-driven path (veratest's music-IRQ pattern) so it doesn't block the main loop.
+- Polish and fine-tuning based on gameplay feedback.
 
 ### Blocked / next
-- Runtime verification is manual on apple2ts (`BRUN MAIN.BIN`).
+- Runtime verification is manual on apple2ts (`BRUN MAIN.BIN` or boot `TimePilot-IIvera.hdv`).
 
 ---
 
