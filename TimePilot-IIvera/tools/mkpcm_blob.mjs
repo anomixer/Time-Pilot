@@ -27,9 +27,9 @@ const DST_RATE = Math.round(48828.125 * VERA_PCM_RATE / 128)
 
 const SOURCES = [
   { name: "AUDIO_COINDROP",      file: "coindrop.pcm",      bank: 1, maxSec: 0.45 },
-  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    bank: 0, maxSec: 7.10, tailSec: 0.0 },
+  { name: "AUDIO_GAME_START",    file: "game_start.pcm",    bank: 0, maxSec: 6.95, tailSec: 0.0 },
   { name: "AUDIO_HIGHSCORE",     file: "highscore.pcm",     bank: 0, maxSec: 0 },
-  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    bank: 0, maxSec: 0 },
+  { name: "AUDIO_NEXT_LEVEL",    file: "next_level.pcm",    bank: 0, maxSec: 1.05 },
   { name: "AUDIO_PLAYER_SHOOT",  file: "player_shoot.pcm",  bank: 0, maxSec: 0 },
   { name: "AUDIO_ROCKET_FLY",    file: "rocket_fly.pcm",    bank: 1, maxSec: 0.30, loops: 1 },
   { name: "AUDIO_BOSSL0",        file: "bossl0.pcm",        bank: 1, maxSec: 0.20, loops: 1 },
@@ -39,13 +39,13 @@ const SOURCES = [
   { name: "AUDIO_WAPON_EXPLODE", file: "wapon_explode.pcm", bank: 0, maxSec: 0 },
   { name: "AUDIO_ENEMY_EXPLODE", file: "enemy_explode.pcm", bank: 0, maxSec: 0 },
   { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   bank: 0, maxSec: 0 },
-  { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 0, maxSec: 0.60 },
+  { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 1, maxSec: 0.55 },
   { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", bank: 1, maxSec: 0.35 },
   { name: "AUDIO_PICKUP",        file: "pickup.pcm",        bank: 0, maxSec: 0 },
   { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    bank: 0, maxSec: 0 },
   { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    bank: 1, maxSec: 0.35 },
-  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", bank: 0, maxSec: 1.38, tailSec: 0.0 },
-  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      bank: 1, maxSec: 1.20 },
+  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", bank: 0, maxSec: 1.05, tailSec: 0.0 },
+  { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      bank: 1, maxSec: 1.10 },
 ]
 
 function processPCM(raw, maxSec, tailSec) {
