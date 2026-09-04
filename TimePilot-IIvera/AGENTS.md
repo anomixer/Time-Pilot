@@ -307,6 +307,15 @@ directly via MLI. So they are both "visible files" AND directly addressable by b
 46. **Authentic 8.03s Arcade Opening Theme Recapture & PCM FIFO Drain Fix**:
     - **Arcade Master PCM Recapture (`8.03s`)**: Diagnosed that Stefan Wessels' CX16 `game_start.wav` stopped abruptly at 7.128s, cutting off the final 0.9 seconds of notes and natural reverb. Re-sourced the authentic 1982 Konami arcade gamerip master (8.03 seconds) and resampled to 6,866.5 Hz (`VERA audio.rate = 18`), taking 55,163 bytes and fitting with 2,181 bytes of safety margin within VRAM Bank 0 (`$2000..$F77B`).
     - **PCM FIFO Drain Cutoff Elimination (`VERA_PCM_CTRL_REG & 0x40`)**: Previously, `audioServiceAudio()` instantly silenced PCM and reset the FIFO the moment `pcmOffset == PCM_START_LEN`, discarding the final ~3,000 buffered samples waiting in the FIFO. Now checks `(VERA_PCM_CTRL_REG & 0x40)` (FIFO empty flag), allowing all buffered audio to play out fully to the last reverb note.
+47. **Authentic Arcade Heavy PCM Explosion & Dual-Sound VRAM Resident Architecture (`AUDIO_BIG_EXPLOSION`)**:
+    - **Dual-Sound PCM Resident Memory Map (`$1000..$FE58`)**: Layer 0 status bar text mode strictly occupies `$0000..$0FFF` (4,096 bytes). Advanced `VRAM_AUDIO_BASE` from `$2000` to `$1000`, unlocking 60 KB (61,440 bytes) of contiguous VRAM in Bank 0 (`$1000..$FFFF`).
+    - **Sample Rate Tuning & Memory Budget (`VERA_PCM_RATE = 17`, ~6,485 Hz)**:
+      - `AUDIO_GAME_START` (8.03s arcade opening theme): 52,102 bytes at `$1000..$DB85`.
+      - `AUDIO_BIG_EXPLOSION` (1.37s heavy arcade explosion): 8,914 bytes at `$DB86..$FE57`.
+      - Combined size: 61,016 bytes (120 blocks), leaving 424 bytes of safe headroom in Bank 0!
+      - Both sounds load once at boot into VRAM, achieving **100% zero runtime disk I/O** during dogfights.
+    - **Generic Modular `pcm_play(vram_addr, length)` Engine**: Generalized PCM playback in `src/audio.c`, pre-buffering 2,048 bytes directly into VERA's 4KB hardware FIFO and streaming at 140 bytes per 60Hz vsync tick.
+    - **Authentic Arcade Crash & Detonation**: Replaced repetitive PSG noise with authentic heavy arcade PCM for player crash (`lose_life()`), boss destruction (`bossBoom = 25`), and WWII heavy bomber destruction (`bomberBoom = 16`). Accompanies the 32x16 explosion animation with thunderous arcade depth!
 
 ---
 

@@ -13,11 +13,11 @@ fs.mkdirSync(buildDir, { recursive: true })
 
 const PCM_START_BLOCK = 200
 const BLOCK_SIZE = 512
-const VRAM_AUDIO_BASE = 0x2000  // Bank 0 offset where audio blob is uploaded
-const VRAM_AUDIO_LIMIT = 57344  // $02000..$0FFFF is 56KB
+const VRAM_AUDIO_BASE = 0x1000  // Bank 0 offset ($1000..$FFFF is 60KB, $0000..$0FFF is Layer 0 map)
+const VRAM_AUDIO_LIMIT = 65536 - VRAM_AUDIO_BASE  // 61,440 bytes
 
-// Target rate: ~6866 Hz (VERA audio.rate = 18: 48828.125 * 18 / 128 = 6866.5 Hz)
-const VERA_PCM_RATE = 18
+// Target rate: ~6485 Hz (VERA audio.rate = 17: 48828.125 * 17 / 128 = 6484.7 Hz)
+const VERA_PCM_RATE = 17
 const SRC_RATE = 12207
 const DST_RATE = Math.round(48828.125 * VERA_PCM_RATE / 128)
 
@@ -40,7 +40,7 @@ const SOURCES = [
   { name: "AUDIO_PICKUP",        file: "pickup.pcm",        maxSec: 0 },
   { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    maxSec: 0 },
   { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    maxSec: 0 },
-  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", maxSec: 0 },
+  { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", maxSec: 1.38, tailSec: 0.0 },
   { name: "AUDIO_TIMEWARP",      file: "timewarp.pcm",      maxSec: 0 },
 ]
 

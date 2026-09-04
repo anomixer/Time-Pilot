@@ -20,6 +20,7 @@
 #include "apple2e.h"
 #include "art_table.h"
 #include "audio.h"
+#include "audio_table.h"
 #include "disk.h"
 #include "demo_data.h"
 
@@ -803,13 +804,13 @@ static void setup_sprites(void) {
 }
 
 static void upload_pcm_to_vram(void) {
-    /* Stream pcm.blob (19,455 bytes = 38 blocks) into VRAM Bank 0 $2000 */
-    vera_set_addr(VERA_INC_BANK0, 0x2000);
+    /* Stream pcm.blob into VRAM Bank 0 VRAM_AUDIO_BASE */
+    vera_set_addr(VERA_INC_BANK0, VRAM_AUDIO_BASE);
     uint32_t off = 0;
-    while (off < 57258) {
-        uint8_t *chunk = disk_ensure(200, 57258, off);
+    while (off < PCM_TOTAL_BYTES) {
+        uint8_t *chunk = disk_ensure(PCM_START_BLOCK, PCM_TOTAL_BYTES, off);
         uint16_t in_blk = 512 - (uint16_t)(off & 511);
-        uint16_t rem = (uint16_t)(57258 - off);
+        uint16_t rem = (uint16_t)(PCM_TOTAL_BYTES - off);
         uint16_t n = (rem < in_blk) ? rem : in_blk;
         for (uint16_t i = 0; i < n; i++) {
             VERA.data0 = chunk[i];

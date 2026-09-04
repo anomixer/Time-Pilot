@@ -434,6 +434,21 @@
 
 ---
 
+### 37. 真·大型電玩震撼重低音 PCM 爆炸音效與雙音軌 VRAM 常駐架構 (Arcade Heavy PCM Explosion & Dual-PCM VRAM Resident Architecture)
+* **告別單調 PSG 雜音，導入正宗大型電玩重低音 PCM 爆炸**：
+  原先玩家墜毀（`lose_life`）、擊毀大型關卡 Boss 以及擊落 1940 四引擎重轟炸機時，僅使用單調的 PSG 雜音漸層。現全面換裝為正宗 1982 Konami 大型電玩街機取樣的 1.37 秒立體重低音爆炸 PCM（`AUDIO_BIG_EXPLOSION`），伴隨 32x16 烈焰連環爆破畫面，臨場感震撼度直接拉滿！
+* **極限壓榨 VRAM Bank 0 解鎖 60KB 雙音軌常駐空間**：
+  - Layer 0 狀態列文字模式僅使用 `$00000..$00FFF`（4,096 bytes）。
+  - 將音效基底位址推進至 `$1000`，釋放 VRAM Bank 0 高達 60 KB（61,440 bytes）的無縫連續空間。
+  - 將取樣率微調至 6,485 Hz（`VERA_PCM_RATE = 17`）：
+    - `AUDIO_GAME_START`（開場主題曲）：8.03 秒完整尾音，佔用 52,102 bytes（`$1000..$DB85`）。
+    - `AUDIO_BIG_EXPLOSION`（大型電玩巨響爆炸）：1.37 秒震撼破片爆破，佔用 8,914 bytes（`$DB86..$FE57`）。
+    - 兩大音效合計 61,016 bytes（120 blocks），在 VRAM Bank 0 `$1000..$FFFF` 中留下 424 bytes 安全緩衝！
+* **開機一次載入，戰鬥進行中 100% 零磁碟 I/O**：
+  開機時將 120 blocks 雙音訊 blob 直接串流進入 VRAM Bank 0，激戰時墜毀或炸王直接自 VRAM 極速推入 VERA 4KB FIFO 播放，完全不佔用 Apple II 主記憶體、不進行磁碟讀取、不中斷 60Hz 狗鬥動畫！
+
+---
+
 ## 編譯與執行 (Build & Run)
 
 ### 開發環境需求

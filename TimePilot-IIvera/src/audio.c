@@ -53,9 +53,32 @@ static void psg_silence(uint8_t ch) {
 #define VERA_PCM_RATE_REG (*(volatile uint8_t *)(VERA_BASE + 0x1C))
 #define VERA_PCM_DATA_REG (*(volatile uint8_t *)(VERA_BASE + 0x1D))
 
-#define PCM_START_LEN PCM_TOTAL_BYTES
-static uint8_t  pcmActive = 0;
-static uint16_t pcmOffset = 0;
+static uint16_t pcmStartAddr = 0;
+static uint16_t pcmTotalLen  = 0;
+static uint8_t  pcmActive    = 0;
+static uint16_t pcmOffset    = 0;
+
+static void pcm_play(uint16_t vram_addr, uint16_t length) {
+    if (length == 0) return;
+    pcmActive = 1;
+    pcmStartAddr = vram_addr;
+    pcmTotalLen = length;
+    pcmOffset = 0;
+    VERA_PCM_RATE_REG = 0;
+    VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
+
+    /* Pre-buffer up to 2048 bytes (or full length if shorter) directly into FIFO */
+    uint16_t pre = (length > 2048) ? 2048 : length;
+    vera_set_addr(VERA_INC_BANK0, vram_addr);
+    for (uint16_t i = 0; i < pre; i++) {
+        VERA_PCM_DATA_REG = VERA.data0;
+    }
+    pcmOffset = pre;
+
+    /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 17 (~6485 Hz) */
+    VERA_PCM_CTRL_REG = 0x0F; /* Mono, 8-bit, Vol 15 */
+    VERA_PCM_RATE_REG = VERA_PCM_RATE;
+}
 
 void audioInit(void) {
     /* Mute all 16 PSG channels */
@@ -67,6 +90,8 @@ void audioInit(void) {
         sfxType[i] = 0;
     }
     pcmActive = 0;
+    pcmOffset = 0;
+    pcmTotalLen = 0;
     VERA_PCM_RATE_REG = 0;
     VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
     VERA_PCM_CTRL_REG = 0x00; /* Mute PCM */
@@ -78,12 +103,12 @@ void audioCleanup(void) {
 }
 
 int8_t audioIsSourcePlaying(int8_t source) {
-    if (source == AUDIO_GAME_START) return pcmActive;
+    if (source == AUDIO_GAME_START || source == AUDIO_BIG_EXPLOSION) return pcmActive;
     return (activePlaying == source);
 }
 
 void audioStopSource(int8_t source) {
-    if (source < 0 || activePlaying == source || source == AUDIO_GAME_START) {
+    if (source < 0 || activePlaying == source || source == AUDIO_GAME_START || source == AUDIO_BIG_EXPLOSION) {
         audioInit();
     }
 }
@@ -103,21 +128,7 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_GAME_START:
-        pcmActive = 1;
-        pcmOffset = 0;
-        VERA_PCM_RATE_REG = 0;
-        VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
-
-        /* Pre-buffer 3000 bytes directly into FIFO from VRAM Bank 0 $2000 */
-        vera_set_addr(VERA_INC_BANK0, 0x2000);
-        for (uint16_t i = 0; i < 3000; i++) {
-            VERA_PCM_DATA_REG = VERA.data0;
-        }
-        pcmOffset = 3000;
-
-        /* Start playback: 8-bit Signed Mono, Volume 15 (Max), Rate 18 (~6866 Hz) */
-        VERA_PCM_CTRL_REG = 0x0F; /* Mono, 8-bit, Vol 15 */
-        VERA_PCM_RATE_REG = VERA_PCM_RATE; /* 6,866 Hz */
+        pcm_play(audioData[AUDIO_GAME_START].start, audioData[AUDIO_GAME_START].length);
         break;
 
     case AUDIO_NEXT_LEVEL:
@@ -172,18 +183,10 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_BIG_EXPLOSION:
-        /* BIG explosion: multi-layer - pulse sweep on CH_EXPL + descending saw on CH_PLAYER */
-        sfxType[CH_EXPL] = 2;    /* big explosion type */
-        sfxTimer[CH_EXPL] = 45;
-        sfxFreq[CH_EXPL] = 4000;
-        sfxVol[CH_EXPL] = 0x3F;
-        psg_write(CH_EXPL, sfxFreq[CH_EXPL], 0xC0 | sfxVol[CH_EXPL], 0xC0); /* Noise crash */
-        /* Descending bass sweep for depth */
-        sfxType[CH_ENEMY] = 3;   /* descending bass rumble */
-        sfxTimer[CH_ENEMY] = 45;
-        sfxFreq[CH_ENEMY] = 1800;
-        sfxVol[CH_ENEMY] = 0x38;
-        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x40); /* Sawtooth rumble */
+        /* Authentic Arcade PCM Big Explosion for player crash, boss, and bomber! */
+        psg_silence(CH_EXPL);
+        psg_silence(CH_ENEMY);
+        pcm_play(audioData[AUDIO_BIG_EXPLOSION].start, audioData[AUDIO_BIG_EXPLOSION].length);
         break;
 
     case AUDIO_PICKUP:
@@ -263,10 +266,10 @@ void audioPlaySource(int8_t source) {
 /* Service audio every frame (60Hz vsync hook) */
 void audioServiceAudio(void) {
     if (pcmActive) {
-        if (pcmOffset < PCM_START_LEN) {
+        if (pcmOffset < pcmTotalLen) {
             uint16_t target = pcmOffset + 140;
-            if (target > PCM_START_LEN) target = PCM_START_LEN;
-            vera_set_addr(VERA_INC_BANK0, (uint16_t)(0x2000 + pcmOffset));
+            if (target > pcmTotalLen) target = pcmTotalLen;
+            vera_set_addr(VERA_INC_BANK0, (uint16_t)(pcmStartAddr + pcmOffset));
             while (pcmOffset < target && !(VERA_PCM_CTRL_REG & 0x80)) {
                 VERA_PCM_DATA_REG = VERA.data0;
                 pcmOffset++;
