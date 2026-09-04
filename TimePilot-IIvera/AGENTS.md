@@ -410,6 +410,11 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Dual-Voice Unison Laser (`CH_PLAYER` 0 + `CH_PLAYER2` 4)**: Coupled two synchronized pulse waves (50% pulse on Ch 0, 25% pulse on Ch 4) to double acoustic power (+6 dB). Implemented 4-frame full-volume attack hold for punchy, arcade-faithful laser fire.
     - **Dual-Voice Explosions (`CH_EXPL` 2 + `CH_EXPL2` 5)**: Combined high-frequency white noise sweep with low-frequency sawtooth bass rumble for heavy body impact.
     - **PCM Ambient Volume Hierarchy**: Calibrated PCM volumes (`BOSSL0..3` down to 7/15, `ROCKET_FLY` 7/15, `BOMB` & `ROCKET_LAUNCH` 10/15, `GAME_START` & `COINDROP` 11/15, `BIG_EXPLOSION` 13/15) so background sirens and effects sit harmoniously behind action sounds without drowning out PSG gunfire and explosions.
+51. **Time Warp Hyperspace Beam Player Center Alignment (`PLAYER_Y0 = 112`) & Multi-Craft Stage Indicator**:
+    - **Player Vertical Origin Calibration (`PLAYER_Y0 = 112`)**: Calibrated player vertical origin `PLAYER_Y0` from 120 to 112. The playfield is 240 pixels tall (`y = 0..239`) with center at 120. A 16x16 sprite centered at 120 has top-left origin `y = 120 - 8 = 112`.
+    - **Time Warp Beam Centering**: The Time Warp beam script draws on tile Row 14 (`y = 112..119`) and Row 15 (`y = 120..127`). With `PLAYER_Y0 = 112`, the horizontal beam line (`y = 119/120`) slices precisely through the player fighter's equator/center, and the expanding beam envelopes the craft completely, matching arcade Konami and CX16 presentation.
+    - **Cloud Purge During Warp**: Purged all clouds during the Time Warp sequence (`hide_sprite(SPR_CLOUD_BASE + c)`) to ensure the hyperspace warp beam is completely unobstructed by drifting background clouds.
+    - **Stage Era Indicator Craft Icons (1 to 5 Mini-Planes Parity)**: Replaced single static sprite 40 with 5 dynamic sprite slots (`SPR_STAGE_BASE = 40..44`, `NUM_STAGE_SPR = 5`). Renders `stage + 1` craft icons right-aligned across `x = 312 - si * 8` at `y = 128` (`16 * SROWH`): Stage 1 = 1 craft icon, Stage 2 = 2 craft icons, Stage 3 = 3 craft icons, Stage 4 = 4 craft icons, Stage 5 = 5 craft icons. Title and attract modes cleanly render 1 icon and hide unused slots.
 
 ---
 

@@ -78,13 +78,14 @@
 #define SPR_LOGO_PILOT  35       // Title screen reuse
 #define SPR_LIFE_BASE   36       // 36..39 (up to 4 reserve ships)
 #define NUM_LIFE_SPR    4
-#define SPR_STAGE_ICON  40       // stage era craft icon (y = 132, x = 304)
-#define SPR_PROG_BASE   41       // 41..46 (6 stage progress planes, y = 184)
+#define SPR_STAGE_BASE  40       // 40..44 (up to 5 stage era craft icons, y = 128)
+#define NUM_STAGE_SPR   5
+#define SPR_PROG_BASE   45       // 45..50 (6 stage progress planes, y = 192)
 #define NUM_PROG_SPR    6
 
 /* Playfield: left 28 columns (224px) — CX16 PLAYFIELDW=28. The right 12 columns
  * (224..320px) hold the arcade status bar (CX16 LAYER_SCORES). Player pinned at
- * the playfield center (CX16 PLAYER_X=104). All bounds below use these. */
+ * the playfield center (CX16 PLAYER_X=104, PLAYER_Y=112). All bounds below use these. */
 #define PF_W            224       /* playfield width (px) */
 #define PF_XMIN         8         /* left sprite bound */
 #define PF_XMAX         216       /* rightmost 16px-sprite origin (224-8) */
@@ -92,7 +93,7 @@
 #define PF_YMAX         232
 #define PLAYER_X0       104
 #define HUD_COL         28        /* status bar left column (x = 224) */
-#define PLAYER_Y0       120
+#define PLAYER_Y0       112
 #define LIVES_MAX       3
 #define SCORE_PER_KILL  100
 #define ENEMIES_TO_BOSS 48        /* 48 kills to trigger Boss (matches CX16 ENEMIES_TO_KILL_TO_CLEAR) */
@@ -597,6 +598,8 @@ static void screen_time_warp(void) {
 
     /* Lock player plane horizontally facing right in center of playfield */
     facing = 8;
+    playerX = PLAYER_X0;
+    playerY = PLAYER_Y0;
     set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
 
     x = timeWarpDrawScript[0];
@@ -1427,6 +1430,11 @@ static void update_game(void) {
             bomberOn = 0; bomberBoom = 0; hide_sprite(SPR_BOMBER);
             bossOn = 0; bossBoom = 0; hide_sprite(SPR_BOSS);
 
+            /* Hide all clouds during Time Warp so the hyperspace beam is completely unobstructed */
+            for (uint8_t c = 0; c < NUM_CLOUDS; c++) {
+                hide_sprite(SPR_CLOUD_BASE + c);
+            }
+
             /* Execute authentic CX16 / Arcade hyperspace Time Warp sequence! */
             screen_time_warp();
 
@@ -1440,7 +1448,10 @@ static void update_game(void) {
             paint_status_bar();
             g_hudDirty = 1;
             facing = 8;
+            playerX = PLAYER_X0;
+            playerY = PLAYER_Y0;
             set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
+            reset_clouds();
 
             /* Transition to authentic stage announce screen (PLAYER 1 / A.D. XXXX / STAGE X) */
             announceT = 100;
@@ -1522,7 +1533,7 @@ static void update_game(void) {
         for (i = 0; i < NUM_EBULLETS; i++) {
             if (ebOn[i]) {
                 int16_t bx = (int16_t)ebX[i], by = (int16_t)ebY[i];
-                if ((uint16_t)(bx - 97) < 23 && (uint16_t)(by - 113) < 23) {
+                if ((uint16_t)(bx - (PLAYER_X0 - 7)) < 23 && (uint16_t)(by - (PLAYER_Y0 - 7)) < 23) {
                     ebOn[i] = 0;
                     hide_sprite(SPR_EBULLET_BASE + i);
                     lose_life();
@@ -1748,8 +1759,16 @@ static void draw_hud(void) {
     uint32_t p2Score = (activePlayer == 1) ? score : players[1].score;
     draw_text(8, 32, format_score_right((numPlayers == 2) ? p2Score : 0), 9);
 
-    /* Item 1: Small 8x8 stage era craft icon at y = 132, x = 304 (matches CX16) */
-    set_sprite(SPR_STAGE_ICON, PAT_STAGE_ICON, 304, 132, 1, 0x00);
+    /* Item 1: Small 8x8 stage era craft icons at y = 128 (CX16 16*SROWH).
+     * Shows (stage + 1) craft icons from right to left: 312 - si * 8 */
+    for (uint8_t si = 0; si < NUM_STAGE_SPR; si++) {
+        if (si <= stage) {
+            uint16_t sx = (uint16_t)(312 - si * 8);
+            set_sprite(SPR_STAGE_BASE + si, PAT_STAGE_ICON, sx, 128, 1, 0x00);
+        } else {
+            set_sprite(SPR_STAGE_BASE + si, PAT_STAGE_ICON, 0, 0, 0, 0);
+        }
+    }
 
     /* Item 2: Reserve fighter planes (pointing UP, 16x16) at y = 152 */
     for (uint8_t li = 0; li < NUM_LIFE_SPR; li++) {
@@ -1862,7 +1881,10 @@ static void title_screen(void) {
     set_sprite(SPR_LOGO_TIME,  PAT_LOGO_TIME,  48,  16, 1, 0x70);
     set_sprite(SPR_LOGO_PILOT, PAT_LOGO_PILOT, 120, 16, 1, 0x70);
     /* Right-side status bar icons (matches cx16-1.jpg: 3 reserve planes + stage icon) */
-    set_sprite(SPR_STAGE_ICON, PAT_STAGE_ICON, 304, 132, 1, 0x00);
+    set_sprite(SPR_STAGE_BASE, PAT_STAGE_ICON, 312, 128, 1, 0x00);
+    for (uint8_t si = 1; si < NUM_STAGE_SPR; si++) {
+        set_sprite(SPR_STAGE_BASE + si, PAT_STAGE_ICON, 0, 0, 0, 0);
+    }
     for (uint8_t li = 0; li < 3; li++) {
         set_sprite(SPR_LIFE_BASE + li, PAT_PLAYER + 24 * 256, (uint16_t)(304 - li * 16), 152, 1, 0x50);
     }
@@ -2270,7 +2292,10 @@ int main(void) {
                         set_black_palette();
                         set_sprite(SPR_LOGO_TIME,  PAT_LOGO_TIME,  48,  16, 1, 0x70);
                         set_sprite(SPR_LOGO_PILOT, PAT_LOGO_PILOT, 120, 16, 1, 0x70);
-                        set_sprite(SPR_STAGE_ICON, PAT_STAGE_ICON, 304, 132, 1, 0x00);
+                        set_sprite(SPR_STAGE_BASE, PAT_STAGE_ICON, 312, 128, 1, 0x00);
+                        for (uint8_t si = 1; si < NUM_STAGE_SPR; si++) {
+                            set_sprite(SPR_STAGE_BASE + si, PAT_STAGE_ICON, 0, 0, 0, 0);
+                        }
                         for (uint8_t li = 0; li < 3; li++) {
                             set_sprite(SPR_LIFE_BASE + li, PAT_PLAYER + 24 * 256, (uint16_t)(304 - li * 16), 152, 1, 0x50);
                         }
