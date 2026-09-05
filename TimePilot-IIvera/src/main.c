@@ -104,6 +104,17 @@
 static const int8_t velDx[32] = {0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0};
 static const int8_t velDy[32] = {-2,-2,-2,-2,-1,-1,-1,0,0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,0,-1,-1,-1,-2,-2,-2};
 
+/* 84.4% velocity scaling table for Stages 0..2 (CX16 parity: 1.00 / 1.19 = 84.0%)
+ * Maps velDx/velDy values (-2, -1, 0, 1, 2) shifted by +2 (indices 0..4) into 8.8 fixed-point deltas.
+ * Index 0 (v = -2): -2 +  80/256 = -432/256 = -1.6875 px (-2 * 84.375%)
+ * Index 1 (v = -1): -1 +  40/256 = -216/256 = -0.84375 px (-1 * 84.375%)
+ * Index 2 (v =  0):  0 +   0/256 =    0/256 =  0.00000 px ( 0 * 84.375%)
+ * Index 3 (v = +1):  0 + 216/256 = +216/256 = +0.84375 px (+1 * 84.375%)
+ * Index 4 (v = +2): +1 + 176/256 = +432/256 = +1.6875 px (+2 * 84.375%)
+ */
+static const int8_t  step84_whole[5] = { -2, -1, 0, 0, 1 };
+static const uint8_t step84_frac[5]  = { 80, 40, 0, 216, 176 };
+
 /* 32 perimeter launch coordinates in the direction of flight (matches CX16 data.c launchPosX/Y) */
 static const int16_t launchX[32] = {
     104, 137, 169, 198, 224, 224, 224, 224,
@@ -148,6 +159,7 @@ static uint8_t isGameStartIntro  = 0;
 static uint8_t playerBoom        = 0;
 static uint8_t playerDeadTimer   = 0;
 static const char sStageClear[]  = "STAGE CLEAR";
+static const char sPaused[]      = "PAUSED";
 static const char sRanking[]     = "SCORE RANKING TABLE";
 static const char sEnterInitials[] = "INPUT YOUR INITIALS";
 static const char sPressSpace[]  = "PRESS SPACE OR 1";
@@ -173,6 +185,7 @@ static uint8_t  enemyOn[NUM_ENEMIES];
 static uint8_t  enemyFrame[NUM_ENEMIES];
 static uint8_t  enemyBoom[NUM_ENEMIES];
 static uint8_t  enemyWave[NUM_ENEMIES];        /* 1 if member of 4-plane wave */
+static uint8_t  enemyXfrac[NUM_ENEMIES], enemyYfrac[NUM_ENEMIES];
 static uint8_t  waveEnemiesAlive;             /* remaining count of current wave */
 static uint16_t waveTimer;
 static int16_t  cloudX[NUM_CLOUDS], cloudY[NUM_CLOUDS];
@@ -919,6 +932,8 @@ static void spawn_enemy(void) {
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
             enemyTimer[i] = (uint16_t)(30 + ((i * 13) % 25));
+            enemyXfrac[i] = 0;
+            enemyYfrac[i] = 0;
             set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
             return;
         }
@@ -941,6 +956,8 @@ static void spawn_wave(void) {
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
             enemyTimer[i] = (uint16_t)(25 + count * 8);
+            enemyXfrac[i] = 0;
+            enemyYfrac[i] = 0;
             set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
             count++;
             waveEnemiesAlive++;
@@ -1119,6 +1136,7 @@ static void update_game(void) {
 
                     for (i = 0; i < NUM_ENEMIES; i++) {
                         enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
+                        enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                         hide_sprite(SPR_ENEMY_BASE + i);
                     }
                     for (i = 0; i < NUM_EBULLETS; i++) {
@@ -1191,6 +1209,7 @@ static void update_game(void) {
             /* Single player respawn (or 2P when only 1 is still alive) */
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
+                enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                 hide_sprite(SPR_ENEMY_BASE + i);
             }
             for (i = 0; i < NUM_EBULLETS; i++) {
@@ -1292,8 +1311,12 @@ static void update_game(void) {
                 continue;
             }
 
-            /* 1. Steer toward player using shortest angular arc */
-            if (((frameCount + i) & 3) == 0) {
+            /* 1. Steer toward player using shortest angular arc.
+             * CX16 parity: Staggered turns every 8 frames for wave attack squadrons
+             * and every 16 frames for patrol planes in eras 0..2 (wide pursuit arcs).
+             * Eras 3..4 (jets & UFOs) turn every 8 frames for agile pursuit. */
+            uint8_t turnMask = (stage < 3) ? (enemyWave[i] ? 7 : 15) : 7;
+            if (((frameCount + (i * 2)) & turnMask) == 0) {
                 int16_t dx = (int16_t)playerX - enemyX[i];
                 int16_t dy = (int16_t)playerY - enemyY[i];
                 uint8_t targetAngle = frame_toward(dx, dy);
@@ -1307,11 +1330,32 @@ static void update_game(void) {
                 }
                 /* Update sprite rotation / animation frame */
                 set_sprite_pat(SPR_ENEMY_BASE + i, get_enemy_pat(i));
+            } else if (stage == 4 && !(frameCount & 3)) {
+                /* Space UFOs (Stage 4) animate continuous light pulsing even when not steering */
+                set_sprite_pat(SPR_ENEMY_BASE + i, get_enemy_pat(i));
             }
 
-            /* 2. Move with world scroll + enemy's OWN engine thrust */
-            int16_t ex = enemyX[i] + scrollDx + (int16_t)velDx[enemyFacing[i]];
-            int16_t ey = enemyY[i] + scrollDy + (int16_t)velDy[enemyFacing[i]];
+            /* 2. Move with world scroll + enemy's OWN engine thrust.
+             * CX16 parity: In Stages 0..2 (1910, 1940, 1970), enemy thrust is ~84% of player speed
+             * (1.00 / 1.19 = 84.0%), allowing the player to outrun and shake off pursuers.
+             * In Stages 3..4 (1982 jets, 2001 UFOs), enemy thrust is 100% of player speed. */
+            int16_t vx, vy;
+            if (stage < 3) {
+                uint8_t xi = (uint8_t)(velDx[enemyFacing[i]] + 2);
+                uint16_t fx = (uint16_t)enemyXfrac[i] + step84_frac[xi];
+                enemyXfrac[i] = (uint8_t)fx;
+                vx = (int16_t)step84_whole[xi] + (int16_t)(fx >> 8);
+
+                uint8_t yi = (uint8_t)(velDy[enemyFacing[i]] + 2);
+                uint16_t fy = (uint16_t)enemyYfrac[i] + step84_frac[yi];
+                enemyYfrac[i] = (uint8_t)fy;
+                vy = (int16_t)step84_whole[yi] + (int16_t)(fy >> 8);
+            } else {
+                vx = (int16_t)velDx[enemyFacing[i]];
+                vy = (int16_t)velDy[enemyFacing[i]];
+            }
+            int16_t ex = enemyX[i] + scrollDx + vx;
+            int16_t ey = enemyY[i] + scrollDy + vy;
 
             /* 3. Off-screen tolerance: only despawn after drifting far off */
             if (ex < -32 || ex > 240 || ey < -32 || ey > 260) {
@@ -1468,6 +1512,7 @@ static void update_game(void) {
             /* Wipe all leftover enemies, bullets, bomber, and boss from previous era */
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
+                enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                 hide_sprite(SPR_ENEMY_BASE + i);
             }
             for (i = 0; i < NUM_EBULLETS; i++) {
@@ -1900,7 +1945,10 @@ static void init_game(uint8_t players_mode) {
     set_stage_palette();
     for (i = 0; i < NUM_BULLETS; i++) { bulletOn[i] = 0; }
     for (i = 0; i < NUM_EBULLETS; i++) { ebOn[i] = 0; }
-    for (i = 0; i < NUM_ENEMIES; i++) { enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0; }
+    for (i = 0; i < NUM_ENEMIES; i++) {
+        enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
+        enemyXfrac[i] = 0; enemyYfrac[i] = 0;
+    }
     paraOn = 0;
     paraTimer = 540;
     paraBonusStreak = 0;
@@ -2214,6 +2262,37 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
     set_sprite_pat(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256);
 }
 
+/* Pause feature (CX16 uiPause parity): displays red "PAUSED" at Row 8, Col 11 */
+static void ui_pause(void) {
+    draw_text(8, 11, sPaused, 1); /* RED "PAUSED" centered at (col 11, row 8) */
+    audioPlaySource(AUDIO_PICKUP);
+
+    uint8_t debounce = 15;
+    for (;;) {
+        waitvsync();
+        audioServiceAudio();
+        if (debounce > 0) {
+            debounce--;
+            if (key_pressed()) (void)key_read();
+            continue;
+        }
+        if (key_pressed()) {
+            uint8_t k = key_read();
+            unsigned char ku = key_up(k);
+            if (ku == 'P' || k == ' ' || ku == ' ' || k == 13 || k == 27) {
+                break;
+            }
+        }
+        if (useJoystick && (((*(volatile uint8_t *)0xC061 & 0x80) != 0) ||
+                           ((*(volatile uint8_t *)0xC062 & 0x80) != 0))) {
+            break;
+        }
+    }
+    (void)KBD_STROBE;
+    audioPlaySource(AUDIO_PICKUP);
+    draw_text(8, 11, "      ", 0);
+}
+
 static void demo_autopilot(void) {
     if (playerBoom > 0 || playerDeadTimer > 0) return;
 
@@ -2456,6 +2535,10 @@ int main(void) {
                 draw_hud();
                 /* Allow player to steer the plane freely */
                 if (!isDemoMode) {
+                    if (ku == 'P') {
+                        ui_pause();
+                        break;
+                    }
                     if (ku == 'K') useJoystick = 0;
                     if (ku == 'J') useJoystick = 1;
                     update_player_steering(k, ku);
@@ -2524,6 +2607,10 @@ int main(void) {
                     break;
                 }
             } else {
+                if (ku == 'P') {
+                    ui_pause();
+                    break;
+                }
                 if (ku == 'C') {
                     cheatInfiniteLives ^= 1;
                     g_hudDirty = 1;

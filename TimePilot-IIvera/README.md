@@ -87,6 +87,7 @@ Supports Apple II keyboard and native analog joystick input:
 | Keypad `8/4/6/2` & `7/9/1/3` | Precise 8-way directional snap |
 | `Space` or `1` | Fire laser cannons / Start 1-Player game (`1-UP`) |
 | `2` | Start 2-Player alternating game (`2-UP`) |
+| `P` | **Pause Game**: Toggles pause mode (displays red `PAUSED` banner, resumes on `P`/`Space`/fire) |
 | `K` | **Toggle Keyboard Mode**: Activates keyboard controls (`[K]EYBOARD` highlighted in green) |
 | `J` | **Toggle Joystick Mode**: Activates Apple II analog joystick (`[J]OYSTICK` highlighted in green, **Default**) |
 | `C` | **Cheat Mode Toggle**: Toggles infinite lives practice mode (displays green `CHEAT` on status bar) |
@@ -262,6 +263,7 @@ Build pipeline:
 | 數字鍵盤 `8/4/6/2`、`7/9/1/3` | 精準鎖定 8 向方位角度 |
 | `Space` (空白鍵) 或 `1` | 雷射機砲發射 / 標題畫面啟動單人遊戲 (1-UP) |
 | `2` | 標題畫面啟動雙人輪流遊戲 (2-UP) |
+| `P` | **暫停遊戲 (Pause)**：即時凍結戰局（畫面中央紅字 `PAUSED`，按 `P`/`Space`/搖桿開火鍵解除） |
 | `K` | **切換鍵盤控制**：啟用純鍵盤模式（標題畫面 `[K]EYBOARD` 綠色高亮） |
 | `J` | **切換搖桿控制**：啟用 Apple II 類比搖桿模式（**預設啟用**，標題畫面 `[J]OYSTICK` 綠色高亮） |
 | `C` | **密技開關**：切換無限戰機練習模式（Infinite Lives Cheat Toggle） |
