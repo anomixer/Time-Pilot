@@ -479,9 +479,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
 63. **3-Second Countdown / Any-Key Startup Screen for Single-Screen Emulators (AppleWin)**:
     - **Single-Screen Transition Problem**: In single-screen emulators such as AppleWin, booting directly into `MAIN.BIN` immediately triggers VERA video mode (`VERA.display.video = 0x11/0x51`), causing the emulator window to snap to VERA before the player can read the BASIC control scheme.
     - **Countdown & Keypress Loop in `startup.bas`**: Added `PRESS ANY KEY OR WAIT 3 SEC TO START` with an Applesoft loop (250 iterations) below controls. Tapping any key (`PEEK(49152) > 127`) instantly launches `MAIN.BIN` without waiting.
-64. **Target-Oriented 8-Way Keyboard Steering with 32-Direction Smooth Rotation & Dedicated `[I]NFINITE` Cheat Key**:
-    - **Continuous Shortest-Arc 32-Direction Rotation**: Replaced instantaneous direction snapping with persistent `targetFacing`. Single tap of `W`/`Up` (0), `D`/`Right` (8), `S`/`X`/`Down` (16, both S and X steer Down), `A`/`Left` (24), `Q` (28, Up-Left), `E` (4, Up-Right), `Z` (20, Down-Left), or `C` (12, Down-Right) sets the desired target heading; the fighter plane automatically and smoothly rotates through all 32 rotational sprite frames at authentic 2-frame cadence along the shortest angular arc!
-    - **Dedicated `[I]NFINITE` Cheat Hotkey**: Shifted the infinite lives cheat toggle from `C` to `[I]` (with green `INFINITE` status bar text at Row 21, Col 32..39), freeing `C` exclusively for Down-Right dogfight steering without accidental cheat toggling.
+64. **Target-Oriented WSAD Cardinal Steering, Q/E 16-Direction Incremental Rotation & Dedicated `[I]NFINITE` Cheat Key**:
+    - **Continuous Shortest-Arc 32-Direction Rotation**: Replaced instantaneous direction snapping with persistent `targetFacing`. Single tap of `W`/`Up` (0), `D`/`Right` (8), `S`/`X`/`Down` (16, both S and X steer Down), or `A`/`Left` (24) sets the desired cardinal target heading; the fighter plane automatically and smoothly rotates through all 32 rotational sprite frames at authentic 2-frame cadence along the shortest angular arc!
+    - **Q / E Incremental Rotation (16-Direction Steps)**: Tapping `Q` (counter-clockwise) or `E` (clockwise) nudges the target heading by 1 unit in a 16-direction scale (2 units in 32-direction frame, 22.5°), with intelligent cadence queuing and big-turn interruption handling.
+    - **Dedicated `[I]NFINITE` Cheat Hotkey**: Shifted the infinite lives cheat toggle from `C` to `[I]` (with green `INFINITE` status bar text at Row 21, Col 32..39), keeping steering keys completely free of accidental cheat activation.
 
 ---
 

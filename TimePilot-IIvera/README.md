@@ -85,8 +85,8 @@ Supports Apple II keyboard and native analog joystick input:
 | `S` or `X` or `↓` (Down Arrow) | Steer Down (`16`): Both `S` and `X` steer downward |
 | `A` or `←` (Left Arrow) | Steer Left (`24`) |
 | `D` or `→` (Right Arrow) | Steer Right (`8`) |
-| `Q` / `E` | Diagonal Up-Left (`28`) / Up-Right (`4`) |
-| `Z` / `C` | Diagonal Down-Left (`20`) / Down-Right (`12`) |
+| `Q` | Rotate counter-clockwise (steps 1 heading in 16-dir scale / 2 steps in 32-dir) |
+| `E` | Rotate clockwise (steps 1 heading in 16-dir scale / 2 steps in 32-dir) |
 | `Space` or `1` | Fire laser cannons / Start 1-Player game (`1-UP`) |
 | `2` | Start 2-Player alternating game (`2-UP`) |
 | `P` | **Pause Game**: Toggles pause mode (displays red `PAUSED` banner, resumes on `P`/`Space`/fire) |
@@ -263,8 +263,8 @@ Build pipeline:
 | `S` 或 `X` 或 `↓` (Down Arrow) | **朝下轉向 (`16`)**：`S` 與 `X` 皆為朝下方向 |
 | `A` 或 `←` (Left Arrow) | **朝左轉向 (`24`)** |
 | `D` 或 `→` (Right Arrow) | **朝右轉向 (`8`)** |
-| `Q` / `E` | **左上 (`28`)** / **右上 (`4`)** 45度斜向轉向 |
-| `Z` / `C` | **左下 (`20`)** / **右下 (`12`)** 45度斜向轉向 |
+| `Q` | **逆時針旋轉**：每按一次以 16 方位轉向一格（等同 32 向轉 2 格，平滑過渡） |
+| `E` | **順時針旋轉**：每按一次以 16 方位轉向一格（等同 32 向轉 2 格，平滑過渡） |
 | `Space` (空白鍵) 或 `1` | 雷射機砲發射 / 標題畫面啟動單人遊戲 (1-UP) |
 | `2` | 標題畫面啟動雙人輪流遊戲 (2-UP) |
 | `P` | **暫停遊戲 (Pause)**：即時凍結戰局（畫面中央紅字 `PAUSED`，按 `P`/`Space`/搖桿開火鍵解除） |

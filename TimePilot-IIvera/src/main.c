@@ -2232,23 +2232,39 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
 
     /* Keyboard target directional steering:
      * Cardinal: W (UP), D (RIGHT), S/X (DOWN), A (LEFT)
-     * Diagonal: Q (UP-LEFT), E (UP-RIGHT), Z (DOWN-LEFT), C (DOWN-RIGHT) */
+     * Q / E: Step counter-clockwise / clockwise (16 directions) */
     if (ku == 'W' || k == 11) {
         targetFacing = 0;   /* UP */
     } else if (ku == 'D' || k == 21) {
         targetFacing = 8;   /* RIGHT */
     } else if (ku == 'S' || ku == 'X' || k == 10) {
-        targetFacing = 16;  /* DOWN (S 或 X 都是下) */
+        targetFacing = 16;  /* DOWN */
     } else if (ku == 'A' || k == 8) {
         targetFacing = 24;  /* LEFT */
     } else if (ku == 'Q') {
-        targetFacing = 28;  /* UP-LEFT */
+        /* Counter-clockwise 1 step in 16-dir scale (2 steps of 32) */
+        if (targetFacing < 0) {
+            targetFacing = (((facing + 1) & ~1) + 30) & 31;
+        } else {
+            uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
+            if (diff > 2 && diff < 30) {
+                targetFacing = (((facing + 1) & ~1) + 30) & 31;
+            } else {
+                targetFacing = ((uint8_t)targetFacing + 30) & 31;
+            }
+        }
     } else if (ku == 'E') {
-        targetFacing = 4;   /* UP-RIGHT */
-    } else if (ku == 'Z') {
-        targetFacing = 20;  /* DOWN-LEFT */
-    } else if (ku == 'C') {
-        targetFacing = 12;  /* DOWN-RIGHT */
+        /* Clockwise 1 step in 16-dir scale (2 steps of 32) */
+        if (targetFacing < 0) {
+            targetFacing = ((facing & ~1) + 2) & 31;
+        } else {
+            uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
+            if (diff > 2 && diff < 30) {
+                targetFacing = ((facing & ~1) + 2) & 31;
+            } else {
+                targetFacing = ((uint8_t)targetFacing + 2) & 31;
+            }
+        }
     }
 
     if (useJoystick) {
