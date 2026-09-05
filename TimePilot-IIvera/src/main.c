@@ -1319,7 +1319,7 @@ static void update_game(void) {
                     enemyOn[i] = 0;
                     set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY, 0, 0, 0, 0);
                 } else {
-                    uint8_t fi = (uint8_t)((enemyBoom[i] * 4) / 8);
+                    uint8_t fi = enemyBoom[i] >> 1;
                     if (fi > 3) fi = 3;
                     set_sprite_pat(SPR_ENEMY_BASE + i, PAT_EXPL + (uint16_t)fi * 256);
                 }
@@ -2353,7 +2353,9 @@ static void demo_autopilot(void) {
             if (enemyOn[i] && enemyBoom[i] == 0) {
                 int16_t dx = (int16_t)enemyX[i] - (int16_t)playerX;
                 int16_t dy = (int16_t)enemyY[i] - (int16_t)playerY;
-                uint16_t d = (uint16_t)(dx * dx + dy * dy);
+                int16_t adx = (dx < 0) ? -dx : dx;
+                int16_t ady = (dy < 0) ? -dy : dy;
+                uint16_t d = (uint16_t)(adx + ady);
                 if (d < minDist) {
                     minDist = d;
                     targetX = (int16_t)enemyX[i] + 8;

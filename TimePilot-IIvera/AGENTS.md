@@ -490,6 +490,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
 66. **Theme Song Playback Across Radar Sweep & Compact Stage Announce Timing**:
     - **Zero-Silence Radar Sweep Music**: Started `AUDIO_GAME_START` immediately when the player launches a game session in `start_game_from_ui()`. The 7.10s arcade opening theme plays continuously throughout the ~1.0s (58 frames) blue radar sweep via `audioServiceAudio()` in the sweep loop.
     - **Streamlined Stage Announce Duration**: Reduced initial stage announce duration from 430 frames (~7.15s) down to 330 frames (~5.5s), avoiding dead silence at the start and shaving over 1.6 seconds off the pre-combat wait time. Active dogfighting begins with perfect musical synchronization as the opening fanfare reaches its grand finale!
+67. **Elimination of Formation Wave Spawn & PCM Pre-Buffer CPU Stall**:
+    - **Root Cause of Wave Spawn Lag**: Investigated frame lag when 4-plane formation attacks (`spawn_wave()`) occur. `AUDIO_WAVE_START` previously copied 2,048 bytes synchronously into VERA's FIFO during `pcm_play()`, consuming over 36,800 cycles on the 1.02 MHz 6502 (>2.16 full frames) and causing an immediate multi-frame dropped vsync hitch.
+    - **Lean 256-Byte Pre-Buffer Optimization**: Reduced `pcm_play()` pre-buffer size from 2,048 bytes down to 256 bytes (>2.5 frames of audio cushion at 6.1kHz / 102 B/frame). Initial buffer fill cost dropped from ~37k cycles down to ~3.8k cycles (only 22% of a single frame budget), allowing `audioServiceAudio()` (+38 B/frame net gain) to smoothly fill the FIFO with zero frame drops.
+    - **Fast Demo Autopilot Distance & Explosion Math**: Replaced 16-bit multiplications (`dx*dx + dy*dy`) in `demo_autopilot()` with fast Manhattan distance (`abs(dx) + abs(dy)`), and simplified enemy explosion frame division `(enemyBoom[i] * 4) / 8` to bit-shift `enemyBoom[i] >> 1`, trimming 93 bytes from `MAIN.BIN` and freeing thousands of CPU cycles when multiple enemy aircraft are simultaneously active.
 
 ---
 

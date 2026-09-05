@@ -73,8 +73,10 @@ static void pcm_play(uint8_t bank, uint16_t vram_addr, uint16_t length, uint8_t 
     VERA_PCM_RATE_REG = 0;
     VERA_PCM_CTRL_REG = 0x80; /* Reset FIFO */
 
-    /* Pre-buffer up to 2048 bytes (or full length if shorter) directly into FIFO */
-    uint16_t pre = (length > 2048) ? 2048 : length;
+    /* Pre-buffer up to 256 bytes (or full length if shorter) directly into FIFO.
+     * 256 bytes provides >2.5 frames of audio cushion at 6.1kHz (~102 B/frame),
+     * taking only ~3.8k cycles instead of 37k cycles (which dropped 2+ vsync frames). */
+    uint16_t pre = (length > 256) ? 256 : length;
     vera_set_addr(bank ? VERA_INC_BANK1 : VERA_INC_BANK0, vram_addr);
     for (uint16_t i = 0; i < pre; i++) {
         VERA_PCM_DATA_REG = VERA.data0;

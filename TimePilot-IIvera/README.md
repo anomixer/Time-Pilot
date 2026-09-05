@@ -370,5 +370,5 @@ build.bat
 
 ## 專案架構與開發技術日誌
 
-欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 66 項工程里程碑，請參閱詳細工程指南：  
+欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 67 項工程里程碑，請參閱詳細工程指南：  
 👉 **[AGENTS.md — Time Pilot IIvera Developer Guide](AGENTS.md)**
