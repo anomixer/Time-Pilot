@@ -487,6 +487,9 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Preserve 3D Logo Across Radar Wipe**: Eliminated premature sprite hiding (`VERA.display.video = 0x11` and `hide_all_sprites()`) before entering Demo mode and Game Start. The dual 64x16 3D `TIME PILOT` logo sprites remain displayed on screen alongside the attract / title text.
     - **Layer 0 Depth Occlusion**: Since Layer 0 is positioned in front of z-depth 1 sprites, the 360° counter-clockwise radar wipe (`screen_wipe_to_sky`) draws solid blocks on Layer 0 that progressively and seamlessly sweep across and cover the 3D logo and title text in unison.
     - **Atomic Cleanup upon Wipe Completion**: When the circular wipe completes full 360° coverage, `hide_sprite(SPR_LOGO_TIME)` and `hide_sprite(SPR_LOGO_PILOT)` hide the logo sprites while the playfield is 100% solid color, ensuring zero pop-in or residual artifacts when the playfield is cleared to the stage sky.
+66. **Theme Song Playback Across Radar Sweep & Compact Stage Announce Timing**:
+    - **Zero-Silence Radar Sweep Music**: Started `AUDIO_GAME_START` immediately when the player launches a game session in `start_game_from_ui()`. The 7.10s arcade opening theme plays continuously throughout the ~1.0s (58 frames) blue radar sweep via `audioServiceAudio()` in the sweep loop.
+    - **Streamlined Stage Announce Duration**: Reduced initial stage announce duration from 430 frames (~7.15s) down to 330 frames (~5.5s), avoiding dead silence at the start and shaving over 1.6 seconds off the pre-combat wait time. Active dogfighting begins with perfect musical synchronization as the opening fanfare reaches its grand finale!
 
 ---
 

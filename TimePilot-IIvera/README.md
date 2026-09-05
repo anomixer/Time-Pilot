@@ -66,7 +66,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 | :--- | :--- | :--- | :--- |
 | **Aspect Ratio** | 320 × 240 full field + right status bar | 320 × 200 compressed field | **320 × 240 Arcade Perfect**: Left 28 cols playfield + Right 12 cols pure black status bar |
 | **Sprite Engine** | Hardware FPGA sprites | Software blitting (Racing the Beam) | **Hardware FPGA sprites**: 128 zero-flicker sprites, solid 60 FPS at 1.02 MHz |
-| **Pre-Game Announce** | Static announce screen | Static announce with Ensoniq music | **Dynamic Flight Announce**: Plane and clouds actively cruise during the 7.1s intro theme! |
+| **Pre-Game Announce** | Static announce screen | Static announce with Ensoniq music | **Dynamic Flight Announce**: Theme song starts during radar sweep; plane and clouds actively cruise during intro! |
 | **Sound System** | Single PCM queue | Ensoniq DOC wavetable | **Dual Hybrid Sound Engine**: 16-channel PSG (+6dB laser, explosion rumble) + 14 PCM samples |
 | **Boss Destruction** | Short noise burst | Ensoniq synth explosion | **1.38s Authentic Arcade Heavy PCM Explosion** with 32×16 multi-stage billowing firestorm |
 | **Time Warp Effect** | 22-step beam animation | Custom scene transition | **100% CX16 22-Step Hyperspace Beam Animation** + 1.20s PCM warp whoosh + 360° radar sweep |
@@ -242,7 +242,7 @@ Build pipeline:
 | :--- | :--- | :--- | :--- |
 | **垂直視野與版面** | 320 × 240 完整視野 (40×30 比例)<br>右側黑底狀態列 | 320 × 200 壓縮視野 (垂直少 40 像素)<br>右側黑底狀態列 | **320 × 240 完美街機比例**<br>左側 28 欄戰場 + 右側 12 欄純黑狀態列 (T256C=0) |
 | **精靈繪製技術** | FPGA 硬體精靈合成，無畫面閃爍 | 純 CPU 軟體貼圖 (Mr Sprite 產生之 65816 碼)<br>需靠 **Racing the Beam** 追光束防撕裂 | **FPGA 硬體精靈合成**，128 個精靈無閃爍撕裂，1.02MHz 即可滿幀 60 FPS 運行 |
-| **開局宣告體驗** | 靜態宣告畫面，開場曲 7.13 秒 | 靜態宣告畫面，播放 Ensoniq 波表合成音樂 | **動態巡航宣告畫面**：開場曲播放 7.1 秒期間，**戰機與雲朵即時飛行流動**，支援 32 方位轉向與螺旋槳動態旋轉！ |
+| **開局宣告體驗** | 靜態宣告畫面，開場曲 7.13 秒 | 靜態宣告畫面，播放 Ensoniq 波表合成音樂 | **動態巡航宣告畫面**：開場曲於**雷達掃描時同步引爆**，宣告期間戰機與雲朵即時巡航流動，無縫銜接空戰！ |
 | **開場主題曲規格** | 7.13 秒 (CX16 原裝取樣，旋律自然淡出收尾) | Ensoniq DOC 晶片重製版 | **7.10 秒街機母帶完整版**<br>(消除 1.0 秒死音，旋律完結自然進入戰鬥) |
 | **多音軌音效架構** | 單軌 PCM 優先權互斥佇列 | Ensoniq DOC 專屬多聲道波表合成 | **極限複合雙音效引擎**：<br>1. **PSG 雙聲道疊加齊奏 (+6dB)**：雷射、爆破、敵彈、凱旋和弦多聲道並行！<br>2. **雙 Bank 常駐 14 首 PCM**：開場曲、大爆炸、投幣、炸彈、飛彈、敵機機槍、攔截爆破、時空躍遷與四大 Boss 警報無縫串流！ |
 | **玩家爆炸震撼度** | 單軌 PCM 短雜音爆破 | Ensoniq 爆炸波表合成音效 | **真·1.38 秒正宗大型電玩重低音 PCM 爆炸**<br>伴隨 32×16 烈焰連環爆破與破片黑煙，PSG 背景音效依然並行不悖！ |
@@ -370,5 +370,5 @@ build.bat
 
 ## 專案架構與開發技術日誌
 
-欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 65 項工程里程碑，請參閱詳細工程指南：  
+欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 66 項工程里程碑，請參閱詳細工程指南：  
 👉 **[AGENTS.md — Time Pilot IIvera Developer Guide](AGENTS.md)**

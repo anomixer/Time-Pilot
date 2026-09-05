@@ -2072,6 +2072,9 @@ static void start_game_from_ui(uint8_t mode) {
     upload_stage_art();
     set_stage_palette();
 
+    /* Play game opening theme right as radar sweep begins */
+    audioPlaySource(AUDIO_GAME_START);
+
     /* Blue counter-clockwise radar sweep cleanly wipes title screen and 3D logo directly to blue sky! */
     screen_wipe_to_sky(0);
     init_game(mode);
@@ -2559,8 +2562,7 @@ int main(void) {
             {
                 if (announceT == 0) {
                     if (isGameStartIntro && !isDemoMode) {
-                        announceT = 430;   /* ~7.15s (430 frames @ 60Hz: trimmed opening theme without dead silence) */
-                        audioPlaySource(AUDIO_GAME_START);
+                        announceT = 330;   /* ~5.5s (theme song started during 1.0s radar sweep, completes naturally) */
                     } else {
                         announceT = 100;   /* ~1.6s brief era announce */
                     }
