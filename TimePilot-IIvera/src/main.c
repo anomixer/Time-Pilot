@@ -2439,9 +2439,19 @@ int main(void) {
     setup_sprites();      // streams art from the HDV blob into VERA pattern RAM
     upload_pcm_to_vram(); // streams opening theme PCM into VRAM Bank 0
     audioInit();
-    audioPlaySource(AUDIO_COINDROP);
-    VERA.display.video = 0x51;  /* NOW enable sprites! */
+
+    /* Pre-render complete title screen atomically before audio start & sprite reveal */
+    paint_screen();
+    title_screen();
+    titleClear = 0;
+    g_titleDrawn = 1;
+
+    waitvsync();
+    VERA.display.video = 0x51;  /* NOW enable sprites & reveal complete title screen atomically! */
     VERA.irq_flags = VERA_IRQ_VSYNC; /* Prime VSYNC flag for main loop lock */
+
+    /* Play authentic coin drop sound right as title screen appears! */
+    audioPlaySource(AUDIO_COINDROP);
 
     for (;;) {
         uint8_t k = 0;
