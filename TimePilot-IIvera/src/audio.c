@@ -190,12 +190,9 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_PICKUP:
-        /* Happy ascending arpeggio: C5 -> E5 -> G5 */
-        sfxType[CH_PICKUP] = 1;
-        sfxTimer[CH_PICKUP] = 18;
-        sfxFreq[CH_PICKUP] = 860;  /* C5 */
-        sfxVol[CH_PICKUP] = 0x3F;
-        psg_write(CH_PICKUP, sfxFreq[CH_PICKUP], 0xC0 | sfxVol[CH_PICKUP], 0x20);
+        /* Authentic Arcade Parachute Pilot rescue pickup PCM */
+        psg_silence(CH_PICKUP);
+        pcm_play(audioData[AUDIO_PICKUP].bank, audioData[AUDIO_PICKUP].start, audioData[AUDIO_PICKUP].length, audioData[AUDIO_PICKUP].loops, 12);
         break;
 
     case AUDIO_EXTRA_LIFE:

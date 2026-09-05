@@ -31,7 +31,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 
 **TimePilot-IIvera** achieves an uncompromising **100% Zero-Disk Runtime Engine**:
 1. **One-Time Boot Streaming (VERA 128KB VRAM as High-Speed SSD)**:
-   * During boot, ProDOS Direct Block MLI (`$80`) streams **86,272 bytes (169 disk blocks) of 14 authentic arcade PCM samples** (game start theme, heavy explosions, time warp whoosh, bombs, sirens, weapon explosions, gunfire, and missiles) and **56,640 bytes (111 disk blocks) of all-era sprite artwork** directly into VERA's 128 KB dual-bank VRAM (Bank 0 and Bank 1).
+   * During boot, ProDOS Direct Block MLI (`$80`) streams **88,736 bytes (174 disk blocks) of 15 authentic arcade PCM samples** (game start theme, heavy explosions, parachute rescue, time warp whoosh, bombs, sirens, weapon explosions, gunfire, and missiles) and **56,640 bytes (111 disk blocks) of all-era sprite artwork** directly into VERA's 128 KB dual-bank VRAM (Bank 0 and Bank 1).
 2. **Disk Drive Completely Silent During Entire Play Session**:
    * Once the title screen appears and throughout all active gameplay, **the disk drive goes completely silent and the activity LED remains off**.
    * Dogfights, heavy explosions, multi-squad formation attacks, guided missile tracking, and even inter-era stage transitions (Boss Explosion ➔ STAGE CLEAR ➔ Time Warp hyperspace beam) execute with **zero disk reads**.
@@ -55,7 +55,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 | **Resolution** | 320 × 240 @ 60Hz | 320 × 200 @ 60Hz (Super Hi-Res) | **320 × 240 @ 60Hz** (Full 1:1 arcade aspect ratio) |
 | **Hardware Sprites** | 128 hardware sprites | **None** (Software CPU blitting) | **128 hardware sprites** (Zero-flicker FPGA compositing) |
 | **Color Palette** | 256 colors (12-bit RGB) | 16 palettes per line (256 colors total) | **256 colors** (12-bit RGB, dynamic stage swap & propeller cycling) |
-| **Audio Hardware** | VERA PCM FIFO + YM2151 FM | Ensoniq 5503 DOC (32-oscillator wavetable) | **VERA 16-Channel Stereo PSG (+6dB unison) + 14 Resident PCM Samples** |
+| **Audio Hardware** | VERA PCM FIFO + YM2151 FM | Ensoniq 5503 DOC (32-oscillator wavetable) | **VERA 16-Channel Stereo PSG (+6dB unison) + 15 Resident PCM Samples** |
 | **Storage & Boot** | SD Card (FAT32, PRG) | 3.5" 800KB Disk / 2MG Image | **Bootable ProDOS 2.4.3 800KB HDV** (MLI `$80` direct streaming, zero runtime I/O) |
 
 ---
@@ -67,7 +67,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 | **Aspect Ratio** | 320 × 240 full field + right status bar | 320 × 200 compressed field | **320 × 240 Arcade Perfect**: Left 28 cols playfield + Right 12 cols pure black status bar |
 | **Sprite Engine** | Hardware FPGA sprites | Software blitting (Racing the Beam) | **Hardware FPGA sprites**: 128 zero-flicker sprites, solid 60 FPS at 1.02 MHz |
 | **Pre-Game Announce** | Static announce screen | Static announce with Ensoniq music | **Dynamic Flight Announce**: Theme song starts during radar sweep; plane and clouds actively cruise during intro! |
-| **Sound System** | Single PCM queue | Ensoniq DOC wavetable | **Dual Hybrid Sound Engine**: 16-channel PSG (+6dB laser, explosion rumble) + 14 PCM samples |
+| **Sound System** | Single PCM queue | Ensoniq DOC wavetable | **Dual Hybrid Sound Engine**: 16-channel PSG (+6dB laser, explosion rumble) + 15 PCM samples |
 | **Boss Destruction** | Short noise burst | Ensoniq synth explosion | **1.38s Authentic Arcade Heavy PCM Explosion** with 32×16 multi-stage billowing firestorm |
 | **Time Warp Effect** | 22-step beam animation | Custom scene transition | **100% CX16 22-Step Hyperspace Beam Animation** + 1.20s PCM warp whoosh + 360° radar sweep |
 | **Stage 5 UFO Colors** | Dynamic Cyan & Magenta | Software-rendered sprites | **Arcade-Exact Electric Cyan (`0x00CF`)** with dynamic Magenta (`0x0C0C`) damage alarm flashing |
@@ -156,9 +156,9 @@ Supports Apple II keyboard and native analog joystick input:
 1. **16-Channel Stereo PSG Synthesizer**:
    * **Player Laser (`AUDIO_PLAYER_SHOOT`)**: Channels 0 and 4 in tight unison double acoustic output (+6 dB) with instant 4-frame attack.
    * **Explosion Rumble (`AUDIO_ENEMY_EXPLODE`)**: White noise combined with low-frequency sawtooth shockwave punch.
-   * **Arpeggios & Fanfares**: Hardware-synthesized pickup arpeggios, missile sirens, and victory chords.
-2. **Dual-Bank VRAM Resident 14 Arcade PCM Samples**:
-   * **Bank 0 (`$1000..$F5C4`, 58.8 KB)**: `AUDIO_GAME_START` (7.10s opening theme), `AUDIO_BOMB` (0.60s whistle), `AUDIO_BIG_EXPLOSION` (1.38s arcade blast).
+   * **Fanfares & Chords**: Hardware-synthesized extra life fanfares and stage victory chords.
+2. **Dual-Bank VRAM Resident 15 Arcade PCM Samples**:
+   * **Bank 0 (`$1000..$FF64`, 61.3 KB)**: `AUDIO_GAME_START` (7.10s opening theme), `AUDIO_BOMB` (0.60s whistle), `AUDIO_PICKUP` (0.38s arcade parachute rescue), and `AUDIO_BIG_EXPLOSION` (1.38s arcade blast). 155 bytes safe headroom below `$FFFF`.
    * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**: `AUDIO_COINDROP`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_WAVE_START`, `AUDIO_BOSSL0..3`, `AUDIO_WAPON_EXPLODE`, `AUDIO_ENEMY_SHOOT`, and `AUDIO_TIMEWARP` (1.20s whoosh). 709 bytes safe headroom before sprite RAM (`$8000`).
 
 ---
@@ -207,7 +207,7 @@ Build pipeline:
 
 本移植版在架構上實現了突破性的創新設計：
 1. **開機一次載入，VRAM 充當超高速板載 SSD**：
-   * 開機引導階段透過 ProDOS MLI 直讀，一口氣將 **86,272 位元組（169 個磁區）的 14 首街機 PCM 取樣**（包含開場音樂、重低音大爆炸、時空躍遷 Time Warp 穿梭音、機槍掃射、攔截爆破等）與 **56,640 位元組（111 個磁區）的全時代精靈圖庫**，直接寫入 VERA 擴充卡的 128 KB 獨立雙 Bank 記憶體（Bank 0 與 Bank 1）。
+   * 開機引導階段透過 ProDOS MLI 直讀，一口氣將 **88,736 位元組（174 個磁區）的 15 首街機 PCM 取樣**（包含開場音樂、重低音大爆炸、跳傘員救援、時空躍遷 Time Warp 穿梭音、機槍掃射、攔截爆破等）與 **56,640 位元組（111 個磁區）的全時代精靈圖庫**，直接寫入 VERA 擴充卡的 128 KB 獨立雙 Bank 記憶體（Bank 0 與 Bank 1）。
 2. **戰鬥與換關全程零讀碟（Disk Drive Completely Silent）**：
    * 進入標題畫面與遊戲戰鬥後，**磁碟機完全靜音、讀取指示燈全程熄滅**！
    * 無論是激烈的空戰纏鬥、重低音大爆炸、飛彈發射、甚至是擊敗 Boss 後的「大爆炸 ➔ STAGE CLEAR 凱旋和弦 ➔ Time Warp 躍遷光束」與跨時代換關，**中途 100% 不讀取任何一個磁區**！
@@ -231,7 +231,7 @@ Build pipeline:
 | **原生解析度** | 320 × 240 @ 60Hz | 320 × 200 @ 60Hz (Super Hi-Res) | **320 × 240 @ 60Hz** (全畫面 1:1 滿版輸出) |
 | **精靈硬體支援** | 128 個硬體精靈 (FPGA 自動合成) | **無硬體精靈**<br>(需由 65816 CPU 軟體即時擦除與繪製) | **128 個硬體精靈** (FPGA 零撕裂硬體合成) |
 | **色盤能力 (Palette)** | 256 色 (12-bit RGB，4096 色選 256) | 16 個調色盤 (每掃描線 16 色，共 256 色) | **256 色** (12-bit RGB，支援動態換關、螺旋槳輪色與母艦青藍/洋紅警報) |
-| **音效硬體架構** | VERA PCM FIFO (單聲道) + YM2151 FM | Ensoniq 5503 DOC (32 振盪器波表晶片) | **VERA 16 通道立體聲 PSG (雙聲道齊奏 +6dB) + 雙 Bank VRAM 常駐 14 首 PCM 音效** |
+| **音效硬體架構** | VERA PCM FIFO (單聲道) + YM2151 FM | Ensoniq 5503 DOC (32 振盪器波表晶片) | **VERA 16 通道立體聲 PSG (雙聲道齊奏 +6dB) + 雙 Bank VRAM 常駐 15 首 PCM 音效** |
 | **儲存媒介與格式** | SD 卡 (FAT32 檔案系統，PRG 載入) | 3.5 吋 800KB 磁碟 / 2MG 映像檔 | **標準 ProDOS 2.4.3 800KB HDV 映像檔**<br>(MLI `$80` 核心直讀，開機全數常駐 VRAM，運行中 100% 零磁碟 I/O) |
 
 ---
@@ -244,7 +244,7 @@ Build pipeline:
 | **精靈繪製技術** | FPGA 硬體精靈合成，無畫面閃爍 | 純 CPU 軟體貼圖 (Mr Sprite 產生之 65816 碼)<br>需靠 **Racing the Beam** 追光束防撕裂 | **FPGA 硬體精靈合成**，128 個精靈無閃爍撕裂，1.02MHz 即可滿幀 60 FPS 運行 |
 | **開局宣告體驗** | 靜態宣告畫面，開場曲 7.13 秒 | 靜態宣告畫面，播放 Ensoniq 波表合成音樂 | **動態巡航宣告畫面**：開場曲於**雷達掃描時同步引爆**，宣告期間戰機與雲朵即時巡航流動，無縫銜接空戰！ |
 | **開場主題曲規格** | 7.13 秒 (CX16 原裝取樣，旋律自然淡出收尾) | Ensoniq DOC 晶片重製版 | **7.10 秒街機母帶完整版**<br>(消除 1.0 秒死音，旋律完結自然進入戰鬥) |
-| **多音軌音效架構** | 單軌 PCM 優先權互斥佇列 | Ensoniq DOC 專屬多聲道波表合成 | **極限複合雙音效引擎**：<br>1. **PSG 雙聲道疊加齊奏 (+6dB)**：雷射、爆破、敵彈、凱旋和弦多聲道並行！<br>2. **雙 Bank 常駐 14 首 PCM**：開場曲、大爆炸、投幣、炸彈、飛彈、敵機機槍、攔截爆破、時空躍遷與四大 Boss 警報無縫串流！ |
+| **多音軌音效架構** | 單軌 PCM 優先權互斥佇列 | Ensoniq DOC 專屬多聲道波表合成 | **極限複合雙音效引擎**：<br>1. **PSG 雙聲道疊加齊奏 (+6dB)**：雷射、爆破、敵彈、凱旋和弦多聲道並行！<br>2. **雙 Bank 常駐 15 首 PCM**：開場曲、大爆炸、跳傘員救援、投幣、炸彈、飛彈、敵機機槍、攔截爆破、時空躍遷與四大 Boss 警報無縫串流！ |
 | **玩家爆炸震撼度** | 單軌 PCM 短雜音爆破 | Ensoniq 爆炸波表合成音效 | **真·1.38 秒正宗大型電玩重低音 PCM 爆炸**<br>伴隨 32×16 烈焰連環爆破與破片黑煙，PSG 背景音效依然並行不悖！ |
 | **過關躍遷特效** | 22 步白光曲速光束 (Time Warp)<br>戰機置中閃爍跳躍後縮為單點 | 專屬過關過場動畫 | **100% 完整還原 CX16 22 步曲速光束字型動畫**<br>白光聚能膨脹 + 戰機高頻閃爍 + 1.20s PCM 穿梭音 + 360° 雷達掃描換關 |
 | **關卡過渡音樂** | 換關重複觸發開場 PCM 主題曲 | 原生過關轉場音效 | **過關音樂完全解耦**：第 2 關起換關宣告改為短暫 PSG 凱旋和弦，開場大曲僅在首局觸發 |
@@ -339,9 +339,9 @@ Build pipeline:
 * **VERA 16 通道立體聲 PSG 晶片合成（雙聲道齊奏 +6dB 爆發力）**：
   * **玩家雷射機砲 (`AUDIO_PLAYER_SHOOT`)**：結合 Channel 0（50% 方波）與 Channel 4（25% 方波微調）雙聲道同度齊奏，輸出聲能直接翻倍（+6 dB），槍聲乾脆紮實！
   * **小兵爆炸破片 (`AUDIO_ENEMY_EXPLODE`)**：結合 Channel 2（白噪音急速降頻）與 Channel 5（鋸齒波低頻重低音震波），打擊感拳拳到肉！
-  * **敵彈啾啾聲、跳傘員救援三音琶音、關卡凱旋和弦**：多聲道硬體獨立合成，毫無延遲，擊落再多敵機也絕不卡音！
-* **雙 Bank VRAM 常駐 14 首街機 PCM 音訊（100% 零磁碟運行串流）**：
-  * **Bank 0 (`$1000..$F5C4`, 58.8 KB)**：開場主題曲 (`AUDIO_GAME_START`, 7.10 秒完整尾韻無死音)、二戰轟炸機空投航彈呼嘯 (`AUDIO_BOMB`, 0.60 秒) 與重低音大爆炸 (`AUDIO_BIG_EXPLOSION`, 1.38 秒正宗震撼爆炸)，保有 2.6 KB 寬裕安全緩衝。
+  * **敵彈啾啾聲、獎勵加命三連音、關卡凱旋和弦**：多聲道硬體獨立合成，毫無延遲，擊落再多敵機也絕不卡音！
+* **雙 Bank VRAM 常駐 15 首街機 PCM 音訊（100% 零磁碟運行串流）**：
+  * **Bank 0 (`$1000..$FF64`, 61.3 KB)**：開場主題曲 (`AUDIO_GAME_START`, 7.10 秒完整尾韻無死音)、二戰轟炸機空投航彈呼嘯 (`AUDIO_BOMB`, 0.60 秒)、跳傘飛行員救援音效 (`AUDIO_PICKUP`, 0.38 秒正宗原音) 與重低音大爆炸 (`AUDIO_BIG_EXPLOSION`, 1.38 秒正宗震撼爆炸)，保有 155 位元組安全邊界防禦暫存器邊界。
   * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**：投幣音效 (`AUDIO_COINDROP`)、飛彈點火與巡航 (`AUDIO_ROCKET_LAUNCH` / `AUDIO_ROCKET_FLY`)、四機突襲警報 (`AUDIO_WAVE_START`)、四大關卡 Boss 巨型母艦專屬警報 (`AUDIO_BOSSL0 ~ 3`)、攔截爆炸 (`AUDIO_WAPON_EXPLODE`)、敵機機槍 (`AUDIO_ENEMY_SHOOT`)、以及**時空躍遷穿梭 PCM (`AUDIO_TIMEWARP`, 1.20 秒正宗原音)**，保有 709 位元組安全緩衝防禦精靈 RAM。
 
 ---
@@ -370,5 +370,5 @@ build.bat
 
 ## 專案架構與開發技術日誌
 
-欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 68 項工程里程碑，請參閱詳細工程指南：  
+欲了解本專案的底層硬體暫存器映射、ProDOS 安全記憶體跨度、VRAM Bank 0/1 配置、零乘法八分圓幾何解角器與完整 69 項工程里程碑，請參閱詳細工程指南：  
 👉 **[AGENTS.md — Time Pilot IIvera Developer Guide](AGENTS.md)**

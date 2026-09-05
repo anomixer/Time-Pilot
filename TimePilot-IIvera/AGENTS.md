@@ -120,8 +120,9 @@ Do NOT replace this with a busy-wait `delay()` — that made the stage announce 
 | **`$00800 - $00FFF`** | 2,048 B | System reserved & staging buffer. |
 | **`$01000 - $0C3DB`** | 46,044 B | **PCM Track 1**: `AUDIO_GAME_START` (7.10s authentic arcade opening theme; 1.0s dead silence trimmed). |
 | **`$0C3DC - $0D2F2`** | 3,863 B | **PCM Track 2**: `AUDIO_BOMB` (0.60s falling bomb whistle). |
-| **`$0D2F3 - $0F5C4`** | 8,914 B | **PCM Track 3**: `AUDIO_BIG_EXPLOSION` (1.38s authentic arcade heavy bass explosion). |
-| **`$0F5C5 - $0FFFF`** | **2,619 B** | **Bank 0 Safe Free Margin** (avoids hardware register boundary). |
+| **`$0D2F3 - $0DC92`** | 2,464 B | **PCM Track 3**: `AUDIO_PICKUP` (0.38s authentic arcade parachute rescue sound). |
+| **`$0DC93 - $0FF64`** | 8,914 B | **PCM Track 4**: `AUDIO_BIG_EXPLOSION` (1.38s authentic arcade heavy bass explosion). |
+| **`$0FF65 - $0FFFF`** | **155 B** | **Bank 0 Safe Free Margin** (avoids hardware register boundary). |
 
 #### 🔸 VRAM Bank 1 (64 KB) — Low RAM Patterns, Special SFX, Sprite Art RAM, PSG & Palette
 | VRAM Address | Size | Description & Contents |
@@ -187,27 +188,27 @@ STAGE CLEAR keeps reappearing.
 
 ## Audio (Dual-Bank VRAM Resident PCM & 16-Channel PSG Chiptune Engine)
 
-- **100% Zero-Disk Runtime Audio**: All 14 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200, 86,272 bytes). Zero disk I/O occurs during gameplay!
-  - **Bank 0 Resident (`$1000..$F5C4`, 58,821 B)**: `AUDIO_GAME_START` (7.10s opening theme; 1.0s dead silence trimmed) + `AUDIO_BOMB` (0.60s falling bomb whistle) + `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). **2,619 bytes free headroom** below `$FFFF`.
+- **100% Zero-Disk Runtime Audio**: All 15 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200, 88,736 bytes, 174 blocks). Zero disk I/O occurs during gameplay!
+  - **Bank 0 Resident (`$1000..$FF64`, 61,285 B)**: `AUDIO_GAME_START` (7.10s opening theme) + `AUDIO_BOMB` (0.60s falling bomb whistle) + `AUDIO_PICKUP` (0.38s arcade parachute rescue pickup) + `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). **155 bytes safe buffer** below `$FFFF`.
   - **Bank 1 Resident (`$1200..$7D3B`, 27,451 B)**: 11 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAPON_EXPLODE`, `AUDIO_ENEMY_SHOOT`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_WAVE_START`, `AUDIO_TIMEWARP`). **709 bytes safe buffer** before sprite pattern RAM (`$8000`).
 - **Slot-Relative VERA PCM Hardware (`$1B / $1C / $1D`)**:
   - Direct register writes to `VERA_PCM_CTRL_REG` (`$1B`), `VERA_PCM_RATE_REG` (`$1C`), `VERA_PCM_DATA_REG` (`$1D`).
-  - Pre-buffers up to 2,048 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~140 bytes per 60Hz vsync hook.
+  - Pre-buffers up to 384 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~192 bytes per 60Hz vsync hook.
 
 ### 🔊 1. VERA 16-Channel PSG Voice Allocation Table
 | Channel Config | Audio Source | Trigger Event | Waveform Design & Envelope |
 | :--- | :--- | :--- | :--- |
 | **Channel 0 & 4**<br>(Dual-Voice Unison) | **`AUDIO_PLAYER_SHOOT`** | Fire button / Joystick PB0/1 | **Dual-Voice Unison (+6 dB Power)**:<br>• Ch 0: 50% pulse (1600Hz ➔ 800Hz fast sweep)<br>• Ch 4: 25% pulse unison detune<br>• First 4 frames locked at max vol `0x3F` for punchy attack! |
 | **Channel 2 & 5**<br>(Dual-Voice Burst) | **`AUDIO_ENEMY_EXPLODE`** | Enemy plane shot down | **High/Low Dual-Wave Burst**:<br>• Ch 2: White noise fast descending sweep<br>• Ch 5: Sawtooth low bass rumble (50Hz sub)<br>• 22 frames of heavy impact; zero cutoff on rapid kills! |
-| **Channel 3** | **`AUDIO_PICKUP`** | Parachute pilot rescued | Ascending 3-note arpeggio (C5 860Hz ➔ E5 1084Hz ➔ G5 1289Hz, max vol `0x3F`). |
 | **Channel 3** | **`AUDIO_EXTRA_LIFE`** | 10k / 50k score thresholds | Triple fanfare burst (E5 1084Hz, max vol `0x3F`). |
 | **Channel 0 & 3** | **`AUDIO_NEXT_LEVEL`** | Stage clear victory | A4 + C5 dual-voice pulse chord (1.6s brief fanfare). |
 
-### 🎙️ 2. Dual-Bank VRAM Resident 14-Sample PCM Table
+### 🎙️ 2. Dual-Bank VRAM Resident 15-Sample PCM Table
 | VRAM Address | Audio Source | Source File | Size | Duration | Dynamic Volume | Role & Sound Design |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- |
 | **Bank 0** | **`AUDIO_GAME_START`** | `game_start.pcm` | 46,044 B | 7.10 s | **Vol 11/15** | 1982 arcade opening theme with dynamic flying scene (1.0s silence trimmed). |
 | **Bank 0** | **`AUDIO_BOMB`** | `bomb.pcm` | 3,863 B | 0.60 s | **Vol 10/15** | 1940 heavy bomber falling bomb whistle. |
+| **Bank 0** | **`AUDIO_PICKUP`** | `pickup.pcm` | 2,464 B | 0.38 s | **Vol 12/15** | Authentic 1982 arcade parachute pilot rescue jingle. |
 | **Bank 0** | **`AUDIO_BIG_EXPLOSION`** | `big_explosion.pcm` | 8,914 B | 1.38 s | **Vol 13/15** | Heavy arcade explosion for player crash, boss death, and bomber! |
 | **Bank 1** | **`AUDIO_COINDROP`** | `coindrop.pcm` | 2,889 B | 0.45 s | **Vol 11/15** | Authentic metallic arcade coin drop ping. |
 | **Bank 1** | **`AUDIO_ROCKET_FLY`** | `rocket_fly.pcm` | 1,945 B | 0.30 s (loop)| **Vol 7/15** | Guided missile cruise tracking buzz (ambient level). |
@@ -498,6 +499,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Root Cause of Coin Drop Hiccup**: At boot, `AUDIO_COINDROP` was previously triggered before `paint_screen()` and `title_screen()`. In the subsequent initial loop turn, writing over 2,800 bytes of tilemap text, status bar, and 3D logo sprites to VRAM consumed 2-3 full vsync frames before `audioServiceAudio()` could run. With a small pre-buffer, the hardware FIFO starved and stuttered before the title screen finished rendering.
     - **Atomic Title Screen Pre-Render**: Moved `paint_screen()`, `title_screen()`, and state flag priming (`titleClear = 0; g_titleDrawn = 1;`) before the sprite reveal and `AUDIO_COINDROP` playback. The complete title screen is revealed atomically at VSYNC, and the coin drop sound rings out crisply with zero VRAM contention or FIFO starvation.
     - **Balanced PCM Pre-Buffer (384 Bytes) & Stream Rate (192 Bytes/Frame)**: Tuned `pcm_play()` pre-buffer to 384 bytes (~3.6 frames cushion, ~5.7k cycles = 33% of 1 frame) and increased `audioServiceAudio()` per-frame refill target to 192 bytes (+84 B/frame net gain over 108 B/frame drain), completely preventing buffer underruns across all machine loads while eliminating dropped frames.
+69. **VERA Bank 0 PCM Audio Expansion: Authentic Arcade Parachute Rescue Pilot SFX (`AUDIO_PICKUP`)**:
+    - **Bank 0 Headroom Utilization**: Evaluated remaining headroom in Bank 0 (~2.6 KB below `$FFFF`). Downsampled `pickup.pcm` to 6,485 Hz (VERA rate 17) capped at 0.38s (2,464 bytes), perfectly fitting into Bank 0 between `AUDIO_BOMB` and `AUDIO_BIG_EXPLOSION`. Bank 0 now holds 61,285 bytes with a safe 155-byte margin before `$FFFF`.
+    - **Full Digitized Parachute Rescue SFX**: Replaced synthetic 3-tone PSG ascending arpeggio on Channel 3 (`sfxType[CH_PICKUP] = 1`) with authentic digitized arcade PCM via `pcm_play(audioData[AUDIO_PICKUP]...)` at Volume 12.
+    - **Zero Runtime Disk I/O & Total 15 Resident PCM Samples**: Total resident audio blob expanded from 14 to 15 authentic arcade samples (88,736 bytes, 174 ProDOS blocks), all loaded once at boot with zero disk I/O during gameplay.
 
 ---
 
@@ -531,7 +536,7 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
 - **CX16 Pixel-Exact Visual Parity & Full Author Credits**: Pitch-black title/attract background (`cx16-1.jpg`), 7-digit right-aligned ranking scores ending at Column 16 under 'G' of `RANKING`, Anomixer 2026 author credits, overlay protection on ranking screen, rows 11/15/19 stage announce around centered plane (`cx16-2.jpg`).
 - **Stage 5 Space Mothership & UFO Color Parity**: Full arcade electric Cyan (`0x00CF`) entry color, authentic dynamic damage pulsation between Cyan and Magenta (`0x0C0C`) under 66% health.
 - **1940 Sea-Green Sky Attract Demo Mode**: 1,472-frame replay recording, automatic launch on 4-cycle title idle, flashing `DEMO PLAY`, instant key/button break-out to real game.
-- **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 12 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
+- **Dual-Bank VRAM Resident PCM & 16-Channel PSG Audio Engine**: 15 arcade PCM samples resident in VRAM Bank 0 & 1 with zero runtime disk I/O, dual-voice unison PSG laser (+6dB) & explosions, and balanced volume hierarchy.
 - HDV packaging: MAIN.BIN + MAIN4.BIN + STARTUP + PCM + ART + DEMO all visible in CATALOG.
 
 ### Active / In progress

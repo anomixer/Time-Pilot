@@ -41,7 +41,7 @@ const SOURCES = [
   { name: "AUDIO_ENEMY_SHOOT",   file: "enemy_shoot.pcm",   bank: 1, maxSec: 0.20 },
   { name: "AUDIO_BOMB",          file: "bomb.pcm",          bank: 0, maxSec: 0.60 },
   { name: "AUDIO_ROCKET_LAUNCH", file: "rocket_launch.pcm", bank: 1, maxSec: 0.35 },
-  { name: "AUDIO_PICKUP",        file: "pickup.pcm",        bank: 0, maxSec: 0 },
+  { name: "AUDIO_PICKUP",        file: "pickup.pcm",        bank: 0, maxSec: 0.38 },
   { name: "AUDIO_EXTRA_LIFE",    file: "extra_life.pcm",    bank: 0, maxSec: 0 },
   { name: "AUDIO_WAVE_START",    file: "wave_start.pcm",    bank: 1, maxSec: 0.35 },
   { name: "AUDIO_BIG_EXPLOSION", file: "big_explosion.pcm", bank: 0, maxSec: 1.38, tailSec: 0.0 },
