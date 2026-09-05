@@ -46,6 +46,12 @@
 #define PAT_LOGO_PILOT 0x0400   // 64x16 = 1024 bytes (Title: Bank 1 low RAM $10400..$107FF)
 #define PAT_PROG_ICON  0x0800   // 8 frames x 16x8 = 1024 bytes (0x0800..0x0BFF in Bank 1 low RAM)
 #define PAT_NUMBERS    0x0C00   // 6 frames x 16x16 = 1536 bytes (0x0C00..0x11FF in Bank 1 low RAM)
+#define POPUP_1000     0
+#define POPUP_2000     1
+#define POPUP_3000     2
+#define POPUP_4000     3
+#define POPUP_5000     4
+#define POPUP_1500     5
 #define PAT_WEAPON     0xD000   // 2048 bytes (bomb/boomerang/rocket/sbullet)
 #define PAT_BOMBER     0xD800   // 4096 bytes (32x16 x 8 frames for 1940: 0xD800..0xE7FF)
 #define PAT_EXPL32     0xE800   // 4 frames x 32x16 = 2048 bytes
@@ -1436,7 +1442,7 @@ static void update_game(void) {
                         set_sprite(SPR_BOSS, PAT_EXPL32, bossXpos, 60, 1, 0x60);
                         score += 3000;
                         check_extra_life();
-                        popupOn = 1; popupX = (int16_t)bossXpos + 8; popupY = 60; popupFrame = 3; popupTimer = 45; /* "3000" popup */
+                        popupOn = 1; popupX = (int16_t)bossXpos + 8; popupY = 60; popupFrame = POPUP_3000; popupTimer = 45; /* "3000" popup */
                         g_hudDirty = 1;
                         audioPlaySource(AUDIO_BIG_EXPLOSION);
                         /* Spectacular boss defeat: all airborne enemies and bomber explode! */
@@ -1598,7 +1604,7 @@ static void update_game(void) {
                                         /* 4-plane wave wiped out! 2000 pts bonus! */
                                         score += 2000;
                                         check_extra_life();
-                                        popupOn = 1; popupX = ex; popupY = ey; popupFrame = 2; popupTimer = 45; /* "2000" frame */
+                                        popupOn = 1; popupX = ex; popupY = ey; popupFrame = POPUP_2000; popupTimer = 45; /* "2000" frame */
                                         audioPlaySource(AUDIO_PICKUP);
                                     }
                                 }
@@ -1690,7 +1696,7 @@ static void update_game(void) {
                     static const uint16_t bonusScores[5] = { 1000, 2000, 3000, 4000, 5000 };
                     score += bonusScores[paraBonusStreak];
                     check_extra_life();
-                    popupOn = 1; popupX = paraX; popupY = paraY; popupFrame = (paraBonusStreak == 0) ? 0 : (paraBonusStreak + 1); popupTimer = 45;
+                    popupOn = 1; popupX = paraX; popupY = paraY; popupFrame = paraBonusStreak; popupTimer = 45;
                     if (paraBonusStreak < 4) paraBonusStreak++;
                     g_hudDirty = 1;
                     audioPlaySource(AUDIO_PICKUP);
@@ -1761,7 +1767,7 @@ static void update_game(void) {
                                     score += 1500;
                                     check_extra_life();
                                     g_hudDirty = 1;
-                                    popupOn = 1; popupX = bomberX + 8; popupY = bomberY; popupFrame = 1; popupTimer = 45; /* "1500" popup */
+                                    popupOn = 1; popupX = bomberX + 8; popupY = bomberY; popupFrame = POPUP_1500; popupTimer = 45; /* "1500" popup */
                                     audioPlaySource(AUDIO_BIG_EXPLOSION);
                                 }
                                 break;

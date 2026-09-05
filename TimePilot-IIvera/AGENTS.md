@@ -463,6 +463,14 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Authentic Arcade Red `PAUSED` Banner**: Centered `PAUSED` horizontally across Columns 11..16 at Row 8 in vivid Red (`color = 1`), matching Commander X16 (`ui.c: printXY(1, 11, 8, 0, TP_COLOR_RED, TEXT_PAUSE)`).
     - **Solid State & Audio Freezing**: During pause, all entity movement, sprite updates, bullet trajectories, and timers are completely frozen in-place with zero jitter. Audio continues servicing background PCM and naturally silences decaying PSG laser/explosion channels.
     - **Responsive Debounced Resume**: Implemented a 15-frame input debounce to prevent accidental double-toggling. Players can resume play by pressing `P` again, `Space`, `Enter`, `Esc`, or joystick fire button. Plays sound cue `AUDIO_PICKUP` on pause/unpause and cleanly erases the text banner back to transparent sky tiles without disturbing background graphics.
+61. **Score Popup Frame Synchronization (`number.png`) & Parachute Bonus Alignment**:
+    - **Frame Ordering Disparity Root Cause**: `number.png` frames from CX16 are laid out in the order `SCORE_1000 = 0`, `SCORE_2000 = 1`, `SCORE_3000 = 2`, `SCORE_4000 = 3`, `SCORE_5000 = 4`, and `SCORE_1500 = 5`. Code previously assumed 1500 was at frame 1 and used an ad-hoc index calculation `(paraBonusStreak == 0) ? 0 : (paraBonusStreak + 1)`. When the streak reached 4 (5,000 pts), it displayed frame 5 (which is `1500`), creating a glaring visual mismatch where +5000 points were awarded but "1500" was rendered.
+    - **Unified `POPUP_*` Constants**: Defined explicit `POPUP_1000` (0), `POPUP_2000` (1), `POPUP_3000` (2), `POPUP_4000` (3), `POPUP_5000` (4), and `POPUP_1500` (5).
+    - **100% Score and Popup Synchrony**:
+      - Parachute rescues now map directly to `popupFrame = paraBonusStreak` (streak 0..4 = 1000..5000 pts and displays "1000".."5000").
+      - 1940 Bomber destruction awards 1500 pts and renders `POPUP_1500` (frame 5).
+      - 4-plane formation wipeout awards 2000 pts and renders `POPUP_2000` (frame 1).
+      - Boss destruction awards 3000 pts and renders `POPUP_3000` (frame 2).
 
 ---
 
