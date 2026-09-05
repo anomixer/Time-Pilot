@@ -9,9 +9,9 @@ typedef struct { uint8_t bank; uint16_t start; uint16_t length; uint8_t loops; }
 #define VRAM_AUDIO_BANK1_BASE 0x1200
 #define PCM_START_BLOCK 200
 #define PCM_BANK0_BYTES 58821
-#define PCM_BANK1_BYTES 23909
-#define PCM_TOTAL_BYTES 82730
-#define PCM_NUM_BLOCKS  162
+#define PCM_BANK1_BYTES 27451
+#define PCM_TOTAL_BYTES 86272
+#define PCM_NUM_BLOCKS  169
 
 static const TpAudioData audioData[NUM_AUDIO_SOURCES] = {
     { 1, 0x1200, 0x0B49, 0 }, // AUDIO_COINDROP
@@ -24,14 +24,14 @@ static const TpAudioData audioData[NUM_AUDIO_SOURCES] = {
     { 1, 0x299B, 0x0D16, 1 }, // AUDIO_BOSSL1
     { 1, 0x36B1, 0x040F, 1 }, // AUDIO_BOSSL2
     { 1, 0x3AC0, 0x04E7, 1 }, // AUDIO_BOSSL3
-    { 0, 0x0000, 0x0000, 0 }, // AUDIO_WAPON_EXPLODE
+    { 1, 0x3FA7, 0x08DE, 0 }, // AUDIO_WAPON_EXPLODE
     { 0, 0x0000, 0x0000, 0 }, // AUDIO_ENEMY_EXPLODE
-    { 0, 0x0000, 0x0000, 0 }, // AUDIO_ENEMY_SHOOT
+    { 1, 0x4885, 0x04F8, 0 }, // AUDIO_ENEMY_SHOOT
     { 0, 0xC3DC, 0x0F17, 0 }, // AUDIO_BOMB
-    { 1, 0x3FA7, 0x08AF, 0 }, // AUDIO_ROCKET_LAUNCH
+    { 1, 0x4D7D, 0x08AF, 0 }, // AUDIO_ROCKET_LAUNCH
     { 0, 0x0000, 0x0000, 0 }, // AUDIO_PICKUP
     { 0, 0x0000, 0x0000, 0 }, // AUDIO_EXTRA_LIFE
-    { 1, 0x4856, 0x08A9, 0 }, // AUDIO_WAVE_START
+    { 1, 0x562C, 0x08A9, 0 }, // AUDIO_WAVE_START
     { 0, 0xD2F3, 0x22D2, 0 }, // AUDIO_BIG_EXPLOSION
-    { 1, 0x50FF, 0x1E66, 0 }, // AUDIO_TIMEWARP
+    { 1, 0x5ED5, 0x1E66, 0 }, // AUDIO_TIMEWARP
 };

@@ -177,6 +177,7 @@ static const char *eraLabel[5] = {
 /* ------------------------- Game state ------------------------- */
 static uint16_t playerX, playerY;
 static uint8_t  facing;                        /* 0..31 heading */
+static int8_t   targetFacing;                  /* 0..31 target heading (-1 if none) */
 static uint16_t bulletX[NUM_BULLETS], bulletY[NUM_BULLETS];
 static int8_t   bulletVX[NUM_BULLETS], bulletVY[NUM_BULLETS];
 static uint8_t  bulletOn[NUM_BULLETS];
@@ -629,6 +630,7 @@ static void screen_time_warp(void) {
 
     /* Lock player plane horizontally facing right in center of playfield */
     facing = 8;
+    targetFacing = 8;
     playerX = PLAYER_X0;
     playerY = PLAYER_Y0;
     set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
@@ -1169,6 +1171,7 @@ static void update_game(void) {
                     playerX = PLAYER_X0;
                     playerY = PLAYER_Y0;
                     facing = 8;
+                    targetFacing = 8;
                     set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
 
                     /* Gate sprites during player switch asset streaming */
@@ -1229,6 +1232,7 @@ static void update_game(void) {
             playerX = PLAYER_X0;
             playerY = PLAYER_Y0;
             facing = 8; /* Facing RIGHT */
+            targetFacing = 8;
             set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
             reset_clouds();
             g_hudDirty = 1;
@@ -1554,6 +1558,7 @@ static void update_game(void) {
             paint_status_bar();
             g_hudDirty = 1;
             facing = 8;
+            targetFacing = 8;
             playerX = PLAYER_X0;
             playerY = PLAYER_Y0;
             set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
@@ -1902,9 +1907,9 @@ static void draw_hud(void) {
         }
     }
     if (cheatInfiniteLives) {
-        draw_text(21, 33, "CHEAT", 2); /* GREEN "CHEAT" in status bar */
+        draw_text(21, 32, "INFINITE", 2); /* GREEN "INFINITE" in status bar */
     } else {
-        draw_text(21, 33, "     ", 0xF0);
+        draw_text(21, 32, "        ", 0xF0);
     }
 }
 
@@ -1934,6 +1939,7 @@ static void init_game(uint8_t players_mode) {
     playerX = PLAYER_X0;
     playerY = PLAYER_Y0;
     facing = 8; /* Facing RIGHT (matches cx16-2.jpg and arcade original) */
+    targetFacing = 8;
     score = 0;
     lives = LIVES_MAX;
     enemiesKilled = 0;
@@ -2224,25 +2230,25 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
     static uint8_t steerStall = 0;
     steerStall++;
 
-    /* Keyboard steering with authentic arcade turn rate (2 frames per step = ~1s full 360) */
-    if (ku == 'A' || k == 8) {
-        if (steerStall & 1) {
-            facing = (facing + 31) & 31;
-        }
+    /* Keyboard target directional steering:
+     * Cardinal: W (UP), D (RIGHT), S/X (DOWN), A (LEFT)
+     * Diagonal: Q (UP-LEFT), E (UP-RIGHT), Z (DOWN-LEFT), C (DOWN-RIGHT) */
+    if (ku == 'W' || k == 11) {
+        targetFacing = 0;   /* UP */
     } else if (ku == 'D' || k == 21) {
-        if (steerStall & 1) {
-            facing = (facing + 1) & 31;
-        }
-    } else if (ku == 'W' || k == 11) {
-        /* Up Arrow / W: steer toward heading UP (0) */
-        if (steerStall & 1 && facing != 0) {
-            facing = (facing <= 16) ? ((facing + 31) & 31) : ((facing + 1) & 31);
-        }
-    } else if (ku == 'S' || k == 10) {
-        /* Down Arrow / S: steer toward heading DOWN (16) */
-        if (steerStall & 1 && facing != 16) {
-            facing = (facing < 16) ? ((facing + 1) & 31) : ((facing + 31) & 31);
-        }
+        targetFacing = 8;   /* RIGHT */
+    } else if (ku == 'S' || ku == 'X' || k == 10) {
+        targetFacing = 16;  /* DOWN (S 或 X 都是下) */
+    } else if (ku == 'A' || k == 8) {
+        targetFacing = 24;  /* LEFT */
+    } else if (ku == 'Q') {
+        targetFacing = 28;  /* UP-LEFT */
+    } else if (ku == 'E') {
+        targetFacing = 4;   /* UP-RIGHT */
+    } else if (ku == 'Z') {
+        targetFacing = 20;  /* DOWN-LEFT */
+    } else if (ku == 'C') {
+        targetFacing = 12;  /* DOWN-RIGHT */
     }
 
     if (useJoystick) {
@@ -2252,15 +2258,19 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
         uint8_t ju = (jy < 85), jd = (jy > 170);
         uint8_t mask = (ju ? 1 : 0) | (jr ? 2 : 0) | (jd ? 4 : 0) | (jl ? 8 : 0);
         int8_t target = joyDirAngles[mask];
+        if (target >= 0) {
+            targetFacing = target;
+        }
+    }
 
-        if (target >= 0 && facing != (uint8_t)target) {
-            if (steerStall & 1) {
-                uint8_t diff = (uint8_t)(((uint8_t)target - facing) & 31);
-                if (diff <= 16) {
-                    facing = (facing + 1)  & 31;
-                } else {
-                    facing = (facing + 31) & 31;
-                }
+    /* Smoothly turn toward targetFacing along the shortest 32-direction arc */
+    if (targetFacing >= 0 && facing != (uint8_t)targetFacing) {
+        if (steerStall & 1) {
+            uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
+            if (diff <= 16) {
+                facing = (facing + 1)  & 31;
+            } else {
+                facing = (facing + 31) & 31;
             }
         }
     }
@@ -2285,6 +2295,12 @@ static void ui_pause(void) {
         if (key_pressed()) {
             uint8_t k = key_read();
             unsigned char ku = key_up(k);
+            if (ku == 'I') {
+                cheatInfiniteLives ^= 1;
+                g_hudDirty = 1;
+                audioPlaySource(AUDIO_PICKUP);
+                continue;
+            }
             if (ku == 'P' || k == ' ' || ku == ' ' || k == 13 || k == 27) {
                 break;
             }
@@ -2503,7 +2519,7 @@ int main(void) {
                         }
                     }
                 }
-                if (ku == 'C') {
+                if (ku == 'I') {
                     cheatInfiniteLives ^= 1;
                     audioPlaySource(AUDIO_PICKUP);
                 }
@@ -2617,7 +2633,7 @@ int main(void) {
                     ui_pause();
                     break;
                 }
-                if (ku == 'C') {
+                if (ku == 'I') {
                     cheatInfiniteLives ^= 1;
                     g_hudDirty = 1;
                     audioPlaySource(AUDIO_PICKUP);

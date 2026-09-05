@@ -160,12 +160,8 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_ENEMY_SHOOT:
-        /* Quick enemy chirp */
-        sfxType[CH_ENEMY] = 1;
-        sfxTimer[CH_ENEMY] = 8;
-        sfxFreq[CH_ENEMY] = 950;
-        sfxVol[CH_ENEMY] = 0x3F;
-        psg_write(CH_ENEMY, sfxFreq[CH_ENEMY], 0xC0 | sfxVol[CH_ENEMY], 0x40); /* Sawtooth */
+        /* Authentic Arcade enemy bullet shoot PCM */
+        pcm_play(audioData[AUDIO_ENEMY_SHOOT].bank, audioData[AUDIO_ENEMY_SHOOT].start, audioData[AUDIO_ENEMY_SHOOT].length, audioData[AUDIO_ENEMY_SHOOT].loops, 9);
         break;
 
     case AUDIO_ENEMY_EXPLODE:
@@ -179,13 +175,8 @@ void audioPlaySource(int8_t source) {
         break;
 
     case AUDIO_WAPON_EXPLODE:
-        /* Weapon impact: heavier noise sweep + low punch */
-        sfxType[CH_EXPL] = 1;
-        sfxTimer[CH_EXPL] = 26;
-        sfxFreq[CH_EXPL] = 2200;
-        sfxVol[CH_EXPL] = 0x3F;
-        psg_write(CH_EXPL, 2200, 0xC0 | 0x3F, 0xC0);
-        psg_write(CH_EXPL2, 160, 0xC0 | 0x3F, 0x40);
+        /* Authentic Arcade weapon/missile explode PCM */
+        pcm_play(audioData[AUDIO_WAPON_EXPLODE].bank, audioData[AUDIO_WAPON_EXPLODE].start, audioData[AUDIO_WAPON_EXPLODE].length, audioData[AUDIO_WAPON_EXPLODE].loops, 11);
         break;
 
     case AUDIO_BIG_EXPLOSION:

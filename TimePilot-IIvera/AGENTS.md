@@ -187,9 +187,9 @@ STAGE CLEAR keeps reappearing.
 
 ## Audio (Dual-Bank VRAM Resident PCM & 16-Channel PSG Chiptune Engine)
 
-- **100% Zero-Disk Runtime Audio**: All 12 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200). Zero disk I/O occurs during gameplay!
+- **100% Zero-Disk Runtime Audio**: All 14 arcade PCM samples are loaded into VRAM once at boot via MLI direct block reading (`build/pcm.blob` at `PCM_START_BLOCK` = 200, 86,272 bytes). Zero disk I/O occurs during gameplay!
   - **Bank 0 Resident (`$1000..$F5C4`, 58,821 B)**: `AUDIO_GAME_START` (7.10s opening theme; 1.0s dead silence trimmed) + `AUDIO_BOMB` (0.60s falling bomb whistle) + `AUDIO_BIG_EXPLOSION` (1.38s heavy arcade explosion). **2,619 bytes free headroom** below `$FFFF`.
-  - **Bank 1 Resident (`$1200..$6F64`, 23,909 B)**: 9 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_WAVE_START`, `AUDIO_TIMEWARP`). **4,251 bytes safe buffer** before sprite pattern RAM (`$8000`).
+  - **Bank 1 Resident (`$1200..$7D3B`, 27,451 B)**: 11 arcade special effect samples (`AUDIO_COINDROP`, `AUDIO_ROCKET_FLY`, `AUDIO_BOSSL0`~`3`, `AUDIO_WAPON_EXPLODE`, `AUDIO_ENEMY_SHOOT`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_WAVE_START`, `AUDIO_TIMEWARP`). **709 bytes safe buffer** before sprite pattern RAM (`$8000`).
 - **Slot-Relative VERA PCM Hardware (`$1B / $1C / $1D`)**:
   - Direct register writes to `VERA_PCM_CTRL_REG` (`$1B`), `VERA_PCM_RATE_REG` (`$1C`), `VERA_PCM_DATA_REG` (`$1D`).
   - Pre-buffers up to 2,048 bytes directly into VERA's 4KB hardware FIFO at start, then streams ~140 bytes per 60Hz vsync hook.
@@ -198,13 +198,12 @@ STAGE CLEAR keeps reappearing.
 | Channel Config | Audio Source | Trigger Event | Waveform Design & Envelope |
 | :--- | :--- | :--- | :--- |
 | **Channel 0 & 4**<br>(Dual-Voice Unison) | **`AUDIO_PLAYER_SHOOT`** | Fire button / Joystick PB0/1 | **Dual-Voice Unison (+6 dB Power)**:<br>• Ch 0: 50% pulse (1600Hz ➔ 800Hz fast sweep)<br>• Ch 4: 25% pulse unison detune<br>• First 4 frames locked at max vol `0x3F` for punchy attack! |
-| **Channel 2 & 5**<br>(Dual-Voice Burst) | **`AUDIO_ENEMY_EXPLODE`**<br>`AUDIO_WAPON_EXPLODE` | Enemy plane shot / missile intercept | **High/Low Dual-Wave Burst**:<br>• Ch 2: White noise fast descending sweep<br>• Ch 5: Sawtooth low bass rumble (50Hz sub)<br>• 22 frames of heavy impact; zero cutoff on rapid kills! |
-| **Channel 1** | **`AUDIO_ENEMY_SHOOT`** | 1910 enemy / Boss firing | Sawtooth warning chirp (950Hz, max vol `0x3F`). |
+| **Channel 2 & 5**<br>(Dual-Voice Burst) | **`AUDIO_ENEMY_EXPLODE`** | Enemy plane shot down | **High/Low Dual-Wave Burst**:<br>• Ch 2: White noise fast descending sweep<br>• Ch 5: Sawtooth low bass rumble (50Hz sub)<br>• 22 frames of heavy impact; zero cutoff on rapid kills! |
 | **Channel 3** | **`AUDIO_PICKUP`** | Parachute pilot rescued | Ascending 3-note arpeggio (C5 860Hz ➔ E5 1084Hz ➔ G5 1289Hz, max vol `0x3F`). |
 | **Channel 3** | **`AUDIO_EXTRA_LIFE`** | 10k / 50k score thresholds | Triple fanfare burst (E5 1084Hz, max vol `0x3F`). |
 | **Channel 0 & 3** | **`AUDIO_NEXT_LEVEL`** | Stage clear victory | A4 + C5 dual-voice pulse chord (1.6s brief fanfare). |
 
-### 🎙️ 2. Dual-Bank VRAM Resident 12-Sample PCM Table
+### 🎙️ 2. Dual-Bank VRAM Resident 14-Sample PCM Table
 | VRAM Address | Audio Source | Source File | Size | Duration | Dynamic Volume | Role & Sound Design |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- |
 | **Bank 0** | **`AUDIO_GAME_START`** | `game_start.pcm` | 46,044 B | 7.10 s | **Vol 11/15** | 1982 arcade opening theme with dynamic flying scene (1.0s silence trimmed). |
@@ -216,6 +215,8 @@ STAGE CLEAR keeps reappearing.
 | **Bank 1** | **`AUDIO_BOSSL1`** | `bossl1.pcm` | 3,350 B | 0.52 s (loop)| **Vol 7/15** | 1940 heavy bomber flagship siren. |
 | **Bank 1** | **`AUDIO_BOSSL2`** | `bossl2.pcm` | 1,039 B | 0.16 s (loop)| **Vol 7/15** | 1970 dual-rotor helicopter boss alarm. |
 | **Bank 1** | **`AUDIO_BOSSL3`** | `bossl3.pcm` | 1,255 B | 0.19 s (loop)| **Vol 7/15** | 1982 supersonic strategic bomber boss siren. |
+| **Bank 1** | **`AUDIO_WAPON_EXPLODE`**| `wapon_explode.pcm`| 2,270 B | 0.35 s | **Vol 11/15** | Authentic arcade missile / bomb intercept explosion blast. |
+| **Bank 1** | **`AUDIO_ENEMY_SHOOT`** | `enemy_shoot.pcm` | 1,272 B | 0.20 s | **Vol 9/15** | Authentic 1910 & 1940 arcade enemy machine gun gunfire. |
 | **Bank 1** | **`AUDIO_ROCKET_LAUNCH`**| `rocket_launch.pcm`| 2,223 B | 0.34 s | **Vol 10/15** | Supersonic homing missile rocket launch blast. |
 | **Bank 1** | **`AUDIO_WAVE_START`** | `wave_start.pcm` | 2,217 B | 0.34 s | **Vol 10/15** | 4-plane formation attack alert siren. |
 | **Bank 1** | **`AUDIO_TIMEWARP`** | `timewarp.pcm` | 7,782 B | 1.20 s | **Vol 13/15** | Authentic 1982 arcade hyperspace time-warp sound accompanying the warp beam! |
@@ -471,6 +472,16 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
       - 1940 Bomber destruction awards 1500 pts and renders `POPUP_1500` (frame 5).
       - 4-plane formation wipeout awards 2000 pts and renders `POPUP_2000` (frame 1).
       - Boss destruction awards 3000 pts and renders `POPUP_3000` (frame 2).
+62. **VERA Bank 1 PCM Audio Expansion (`AUDIO_ENEMY_SHOOT` & `AUDIO_WAPON_EXPLODE`)**:
+    - **Bank 1 Headroom Utilization**: Packed `enemy_shoot.pcm` (1,272 bytes, 0.20s at ~6.5kHz) and `wapon_explode.pcm` (2,270 bytes, 0.35s) into Bank 1 alongside rocket launch/fly, wave alert, coindrop, and boss audio. Bank 1 holds 27,451 bytes with 709 bytes safe headroom before `$8000` Sprite RAM.
+    - **Authentic Arcade Gunfire & Intercept Explosions**: Replaced synthetic PSG sawtooth chirps with authentic Konami arcade PCM gunfire in Stages 0 (1910) and 1 (1940), and authentic weapon explosion in Stage 3 (1982) when missiles or bombs are shot down.
+    - **RAM Footprint Reduction**: Direct PCM playback eliminated bulky multi-register PSG sweep routines, trimming `MAIN.BIN` down to 29,995 bytes and expanding 6502 host RAM headroom below ProDOS buffer `$9600` to 2.87 KB.
+63. **3-Second Countdown / Any-Key Startup Screen for Single-Screen Emulators (AppleWin)**:
+    - **Single-Screen Transition Problem**: In single-screen emulators such as AppleWin, booting directly into `MAIN.BIN` immediately triggers VERA video mode (`VERA.display.video = 0x11/0x51`), causing the emulator window to snap to VERA before the player can read the BASIC control scheme.
+    - **Countdown & Keypress Loop in `startup.bas`**: Added `PRESS ANY KEY OR WAIT 3 SEC TO START` with an Applesoft loop (250 iterations) below controls. Tapping any key (`PEEK(49152) > 127`) instantly launches `MAIN.BIN` without waiting.
+64. **Target-Oriented 8-Way Keyboard Steering with 32-Direction Smooth Rotation & Dedicated `[I]NFINITE` Cheat Key**:
+    - **Continuous Shortest-Arc 32-Direction Rotation**: Replaced instantaneous direction snapping with persistent `targetFacing`. Single tap of `W`/`Up` (0), `D`/`Right` (8), `S`/`X`/`Down` (16, both S and X steer Down), `A`/`Left` (24), `Q` (28, Up-Left), `E` (4, Up-Right), `Z` (20, Down-Left), or `C` (12, Down-Right) sets the desired target heading; the fighter plane automatically and smoothly rotates through all 32 rotational sprite frames at authentic 2-frame cadence along the shortest angular arc!
+    - **Dedicated `[I]NFINITE` Cheat Hotkey**: Shifted the infinite lives cheat toggle from `C` to `[I]` (with green `INFINITE` status bar text at Row 21, Col 32..39), freeing `C` exclusively for Down-Right dogfight steering without accidental cheat toggling.
 
 ---
 
