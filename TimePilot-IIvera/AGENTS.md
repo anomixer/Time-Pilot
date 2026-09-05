@@ -483,6 +483,10 @@ The PCM, ART, and DEMO blobs are **registered as standard ProDOS sapling files**
     - **Continuous Shortest-Arc 32-Direction Rotation**: Replaced instantaneous direction snapping with persistent `targetFacing`. Single tap of `W`/`Up` (0), `D`/`Right` (8), `S`/`X`/`Down` (16, both S and X steer Down), or `A`/`Left` (24) sets the desired cardinal target heading; the fighter plane automatically and smoothly rotates through all 32 rotational sprite frames at authentic 2-frame cadence along the shortest angular arc!
     - **Q / E Incremental Rotation (16-Direction Steps)**: Tapping `Q` (counter-clockwise) or `E` (clockwise) nudges the target heading by 1 unit in a 16-direction scale (2 units in 32-direction frame, 22.5°), with intelligent cadence queuing and big-turn interruption handling.
     - **Dedicated `[I]NFINITE` Cheat Hotkey**: Shifted the infinite lives cheat toggle from `C` to `[I]` (with green `INFINITE` status bar text at Row 21, Col 32..39), keeping steering keys completely free of accidental cheat activation.
+65. **Seamless 3D Logo Radar Wipe Sweep into Demo & Game Start**:
+    - **Preserve 3D Logo Across Radar Wipe**: Eliminated premature sprite hiding (`VERA.display.video = 0x11` and `hide_all_sprites()`) before entering Demo mode and Game Start. The dual 64x16 3D `TIME PILOT` logo sprites remain displayed on screen alongside the attract / title text.
+    - **Layer 0 Depth Occlusion**: Since Layer 0 is positioned in front of z-depth 1 sprites, the 360° counter-clockwise radar wipe (`screen_wipe_to_sky`) draws solid blocks on Layer 0 that progressively and seamlessly sweep across and cover the 3D logo and title text in unison.
+    - **Atomic Cleanup upon Wipe Completion**: When the circular wipe completes full 360° coverage, `hide_sprite(SPR_LOGO_TIME)` and `hide_sprite(SPR_LOGO_PILOT)` hide the logo sprites while the playfield is 100% solid color, ensuring zero pop-in or residual artifacts when the playfield is cleared to the stage sky.
 
 ---
 

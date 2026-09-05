@@ -425,6 +425,7 @@ static void waitvsync(void) {
     while ((VERA.irq_flags & VERA_IRQ_VSYNC) == 0) {}  /* poll until hardware raises VSYNC */
     VERA.irq_flags = VERA_IRQ_VSYNC;                   /* acknowledge/clear flag for next frame */
 }
+static void hide_sprite(uint8_t n);
 
 /* Counter-clockwise circular radar screen wipe (matches CX16 screenWipe) */
 static void screen_draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint8_t color) {
@@ -488,6 +489,10 @@ static void screen_wipe_to_sky(uint8_t new_stage) {
 
     /* Sweep counter-clockwise from 12 o'clock using color 14 */
     screen_wipe(14);
+
+    /* Hide 3D TIME PILOT logo now that radar sweep has fully covered the playfield */
+    hide_sprite(SPR_LOGO_TIME);
+    hide_sprite(SPR_LOGO_PILOT);
 
     /* Commit new sky color to palette 0 and restore palette 14 */
     vera_set_addr(VERA_INC_BANK1, (uint16_t)(PALETTE_ADDR + 0 * 2));
@@ -2063,14 +2068,11 @@ static void start_game_from_ui(uint8_t mode) {
     attractCycleCount = 0;
     isDemoMode = 0;
 
-    /* Hide sprites during asset streaming to eliminate any mid-load flicker */
-    VERA.display.video = 0x11;
-    hide_all_sprites();
-
     stage = 0;
     upload_stage_art();
     set_stage_palette();
 
+    /* Blue counter-clockwise radar sweep cleanly wipes title screen and 3D logo directly to blue sky! */
     screen_wipe_to_sky(0);
     init_game(mode);
     paint_status_bar();
@@ -2506,14 +2508,10 @@ int main(void) {
                             isDemoMode = 1;
                             demoIndex = 0;
 
-                            /* Hide sprites during disk streaming to eliminate start-of-demo flicker */
-                            VERA.display.video = 0x11;
-                            hide_all_sprites();
-
                             stage = 1;                /* Stage 1 = A.D. 1940 (Green Sky) */
                             upload_stage_art();       /* Upload 1940 Bomber, weapons, green fighters, expl32 */
 
-                            /* Green counter-clockwise radar sweep wipes title screen directly to green! */
+                            /* Green counter-clockwise radar sweep cleanly wipes title screen and 3D logo directly to green! */
                             screen_wipe_to_sky(1);
 
                             init_game(1);
