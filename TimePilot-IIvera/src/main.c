@@ -72,17 +72,24 @@ static const uint16_t patBossBase[5] = {
     (uint16_t)ART_BOSS4_FRAMES_OFF
 };
 
-static const uint16_t patWeaponBase[5] = {
-    (uint16_t)ART_EBULLET_FRAMES_OFF,
-    (uint16_t)ART_BOMB_FRAMES_OFF,
-    (uint16_t)ART_BOOMERANG_FRAMES_OFF,
-    (uint16_t)ART_ROCKET_FRAMES_OFF,
-    (uint16_t)ART_SBULLET_FRAMES_OFF
-};
+#define PAT_ENEMY      (patEnemyBase[stage])
+#define PAT_BOSS       (patBossBase[stage])
+#define PAT_BOMB       ((uint16_t)ART_BOMB_FRAMES_OFF)
+#define PAT_BOOMERANG  ((uint16_t)ART_BOOMERANG_FRAMES_OFF)
+#define PAT_ROCKET     ((uint16_t)ART_ROCKET_FRAMES_OFF)
+#define PAT_SBULLET    ((uint16_t)ART_SBULLET_FRAMES_OFF)
 
-#define PAT_ENEMY  (patEnemyBase[stage])
-#define PAT_BOSS   (patBossBase[stage])
-#define PAT_WEAPON (patWeaponBase[stage])
+/* CX16 weapon kinds. One in-flight shot per plane (enemyShot[]); specials and
+ * flyer spray also count against numTrackedMax (2, then 3). */
+#define EB_BULLET  0
+#define EB_SPACE   1
+#define EB_BOMB    2
+#define EB_ROCKET  3
+#define EB_BOOMER  4
+#define EB_KMASK   7
+#define EB_TRACKED 0x40
+#define EB_RIGHT   0x80          /* bomb thrown from the left, heading swings CW */
+#define WEAPON_BORDER 32         /* CX16 4*8 */
 
 #ifndef VERA_INC_1
 #define VERA_INC_1     (((1 << 1) | 0) << 3)
@@ -152,7 +159,33 @@ static const uint16_t patWeaponBase[5] = {
 #define LIVES_MAX       3
 #define SCORE_PER_KILL  100
 #define ENEMIES_TO_BOSS 48        /* 48 kills to trigger Boss (matches CX16 ENEMIES_TO_KILL_TO_CLEAR) */
-#define BOSS_HP         5
+#define BOSS_HP         8          /* CX16 LEVELBOSS_HEALTH */
+
+/* update_game() runs once every two vsyncs (30 Hz), so a duration the CX16
+ * expresses in 60 Hz frames is half as many ticks here. CX16's frame counts had
+ * been transplanted verbatim (540, 300, 180, 60, ...), which made every one of
+ * these run for twice its intended wall-clock time. */
+#define TICKS(f)        ((f) / 2)
+#define T_PARACHUTE     TICKS(540)  /* CX16 PARACHUTE_TIMER            */
+#define T_BOMBER        TICKS(300)  /* CX16 BOMBER_TIMER               */
+#define T_WAVE          TICKS(640)  /* CX16 ENEMY_SPAWN_WAVE_TIMER     */
+#define T_SPAWN         TICKS(32)   /* CX16 ENEMY_SPAWN_TIMER+1        */
+#define T_PLAYER_DIED   TICKS(180)  /* CX16 PLAYER_DIED_TIMER          */
+#define T_POPUP         TICKS(60)   /* CX16 gameAddBonus activeTimer   */
+/* CX16 explosions run EXPLOSION_HOLD_TIMER (10) plus explode_*_hold_table:
+ * 32x16 = 10+8+16+8+8 = 50 frames, 16x16 = 10+4+8+4+4 = 30 frames. Frames run
+ * 3..0 (aiExplodeThing decrements activeFrame), never 0..3. */
+#define T_BOOM32        25
+#define T_BOOM16        16
+#define T_STAGE_CLEAR   90          /* 3s banner (port addition)       */
+/* The AI thinks once per 8 frames in both games, so these transfer unscaled. */
+#define T_STEADY_MIN    22          /* CX16 ENEMY_STEADY_MIN_TIME  (3*60)/8   */
+#define T_WAVE_ACTIVE   11          /* CX16 ENEMY_WAVE_ACTIVE_TIMER (1.5*60)/8 */
+#define T_WAVE_ENTRY    7           /* CX16 ENEMY_WAVE_ENTRY_TIMER  60/8      */
+#define T_RECALL        TICKS(576)  /* CX16 ENEMY_RECALL_TIMER (32*18)        */
+#define T_BOSS          TICKS(120)  /* CX16 LEVELBOSS_TIMER (2 s)             */
+#define T_ANN_STAGE     300         /* CX16 STAGE_ANNOUNCE_TIMER 5s (vsync)   */
+#define T_ANN_READY     180         /* CX16 PLAYER_ANNOUNCE_TIMER 3s (vsync)  */
 #define NUM_STAGES      5          /* 1910 / 1940 / 1970 / 1982 / 2001 (CX16 order) */
 
 /* 32-direction movement vectors (clockwise from up), magnitude ~2 px (matches arcade/CX16 pacing). */
@@ -231,18 +264,26 @@ static uint16_t bulletX[NUM_BULLETS], bulletY[NUM_BULLETS];
 static int8_t   bulletVX[NUM_BULLETS], bulletVY[NUM_BULLETS];
 static uint8_t  bulletOn[NUM_BULLETS];
 static uint16_t ebX[NUM_EBULLETS], ebY[NUM_EBULLETS];
-static int8_t   ebVX[NUM_EBULLETS], ebVY[NUM_EBULLETS];
+static uint8_t  ebHead[NUM_EBULLETS];          /* CX16 activeHeading[] / bomb swing */
 static uint8_t  ebOn[NUM_EBULLETS];
+static uint8_t  ebKind[NUM_EBULLETS];          /* kind | EB_TRACKED | EB_RIGHT */
+static uint8_t  ebOwner[NUM_EBULLETS];         /* enemy index, or >=NUM_ENEMIES if flyer/orphan */
+static uint8_t  enemyShot[NUM_ENEMIES];        /* 0xFF free, else ebullet slot (CX16 enemyWeapon[]) */
+static uint8_t  numTracked, numTrackedMax, numRockets, launchSide;
 static int16_t  enemyX[NUM_ENEMIES], enemyY[NUM_ENEMIES];
 static uint8_t  enemyFacing[NUM_ENEMIES];
 static uint8_t  enemyOffscreen[NUM_ENEMIES];
-static uint16_t enemyTimer[NUM_ENEMIES];
 static uint8_t  enemyOn[NUM_ENEMIES];
-static uint8_t  enemyFrame[NUM_ENEMIES];
+static uint8_t  enemyHeading[NUM_ENEMIES];     /* CX16 enemyHeading[] - desired heading */
+static uint8_t  enemyMode[NUM_ENEMIES];        /* 0 patrol, 1 AI_FOLLOW, 2 AI_FLEE */
+static uint8_t  enemyThink[NUM_ENEMIES];       /* CX16 activeTimer[], in think ticks */
 static uint8_t  enemyBoom[NUM_ENEMIES];
 static uint8_t  enemyWave[NUM_ENEMIES];        /* 1 if member of 4-plane wave */
 static uint8_t  enemyXfrac[NUM_ENEMIES], enemyYfrac[NUM_ENEMIES];
 static uint8_t  waveEnemiesAlive;             /* remaining count of current wave */
+static uint8_t  waveSpawnL, waveSpawnR, waveSpawnN, waveSpawnDir, waveSpawnDur;
+static uint8_t  numFollowersMax;              /* CX16 numberOfAIFollowersMax */
+static uint16_t lifeFrames;                   /* CX16 frameCounter - reset each life */
 static uint16_t waveTimer;
 static int16_t  cloudX[NUM_CLOUDS], cloudY[NUM_CLOUDS];
 static const uint8_t cloudType[NUM_CLOUDS] = { 0, 1, 2, 1, 0, 1, 2, 1 };
@@ -259,11 +300,28 @@ static const uint8_t cloudSprite[NUM_CLOUDS] = {
     SPR_CLOUD2_BASE + 1,   /* i=6  LARGE  */
     SPR_CLOUD1_BASE + 3,   /* i=7  medium */
 };
+/* CX16 moves the three cloud tiers at VELOCITY_050 / _075 / _119 while the
+ * world itself scrolls at VELOCITY_119 - so the near tier tracks the world
+ * exactly and the far tiers lag it by 0.42x and 0.63x. The port used
+ * (scroll * 1,2,3)/2, i.e. 0.5x / 1.0x / 1.5x, which made the big foreground
+ * clouds outrun everything else in the world by half again. These are the
+ * CX16 ratios as 8.8 fixed point, carried the way aiAddVelocity() does it. */
+static const int8_t  cloudWhole[3][5] = {
+    { -1, -1, 0,   0, 0 },      /* 0.420x - CX16 VELOCITY_050 / VELOCITY_119 */
+    { -2, -1, 0,   0, 1 },      /* 0.630x - CX16 VELOCITY_075 / VELOCITY_119 */
+    { -2, -1, 0,   1, 2 },      /* 1.000x - CX16 VELOCITY_119 (world speed)  */
+};
+static const uint8_t cloudFrac[3][5] = {
+    {  41, 149, 0, 107, 215 },
+    { 189,  95, 0, 161,  67 },
+    {   0,   0, 0,   0,   0 },
+};
+static uint8_t cloudXf[NUM_CLOUDS], cloudYf[NUM_CLOUDS];
 static const int16_t cloudInitX[NUM_CLOUDS] = { 128, -8, 160, 32, 0, 112, 32, 160 };
 static const int16_t cloudInitY[NUM_CLOUDS] = { 216, 212, 193, 146, 77, 72, 54, 0 };
-static uint8_t  bossOn, bossHp, bossFire, bossBoom;
-static uint16_t bossXpos;
-static int16_t  bossVX;
+static uint8_t  bossOn, bossHp, bossFire, bossBoom, bossRam;
+static int16_t  bossX, bossY, bossTimer;
+static int8_t   bossDir;                    /* +1 right, -1 left */
 /* Parachute score pickup: falls from above, worth bonus points on player hit. */
 static uint8_t  paraOn;
 static int16_t  paraX, paraY;
@@ -293,12 +351,26 @@ static uint8_t  g_annDrawn;        /* stage announce already drawn this visit */
 static uint8_t  state = 0;         /* 0=title  1=playing  2=highscore entry  3=gameover  4=announce */
 static uint8_t  titleClear = 1;
 static uint8_t  cheatInfiniteLives = 0; /* 'C' key toggle: infinite fighters */
-static uint8_t  playerInvuln = 0;       /* Invulnerability countdown (frames) */
 
 /* Propeller animation via palette cycling */
 static const uint16_t colorPaletteProps[3] = { 0x0680, 0x00C0, 0x0FFF };
-static const uint16_t colorPaletteSky[5]   = { 0x0006, 0x0052, 0x0063, 0x0505, 0x0000 };
+static const uint16_t colorPaletteSky[5]   = { 0x0006, 0x0056, 0x0065, 0x0505, 0x0000 };
 static uint8_t  propState = 0;
+
+/* CX16 data.c bossAnimFrames[] - length of the damage-smoke cycle, by health>>1 */
+static const uint8_t bossAnimFrames[4] = { 3, 3, 2, 1 };
+
+/* CX16 data.c horizontalLaunchRayTable[], rotated into IIvera's angle space
+ * (IIvera angle = CX16 angle + 8). Snaps the player's heading onto the launch
+ * ray that sits on a left or right screen edge; rays 16..31 are the left edge,
+ * which is CX16's horizontalDirectionTable[] DIR_RIGHT range. Used to decide
+ * which side the bomber and the level boss fly in from. */
+static const uint8_t horizontalLaunchRay[32] = {
+     5,  5,  5,  5,  5,  5,  6,  7,
+     8,  9, 10, 11, 11, 11, 11, 11,
+    21, 21, 21, 21, 21, 21, 22, 23,
+    24, 25, 26, 27, 27, 27, 27, 27
+};
 
 /* Multiplier scoring: 0.5s (30 frames) kill window (100 -> 200 -> 300 -> 400 pts) */
 static uint8_t  killMultiplier = 1;
@@ -315,6 +387,7 @@ typedef struct {
     uint16_t enemiesKilled;
     uint32_t nextExtraLife;
     uint8_t  alive;
+    uint8_t  stageIntroState;
 } PlayerState;
 
 static PlayerState players[2];
@@ -337,6 +410,8 @@ static void lose_life(void);
 static void draw_hud(void);
 static void game_over_screen(void);
 static void check_extra_life(void);
+static uint8_t frame_toward(int16_t dx, int16_t dy);
+static uint8_t turn_on_ray(uint8_t cur, uint8_t target);
 static void upload_pattern_stream(uint16_t addr, uint32_t art_off, uint16_t len);
 
 /* High-score table (arcade 5 entries). Initials entry is the "high-score table
@@ -577,21 +652,6 @@ static void screen_wipe_to_sky(uint8_t new_stage) {
     VERA.data0 = (uint8_t)(pal[14] >> 8);
 }
 
-static void draw_number(uint8_t row, uint8_t col, uint32_t n, uint8_t color) {
-    char buf[10];
-    for (int i = 7; i >= 0; i--) {
-        buf[i] = (char)('0' + (n % 10));
-        n /= 10;
-    }
-    buf[8] = 0;
-    int first = 0;
-    while (first < 7 && buf[first] == '0') {
-        buf[first] = ' ';
-        first++;
-    }
-    draw_text(row, col, buf, color);
-}
-
 /* ------------------------- Sprite helpers ------------------------- */
 static void pattern_addr(uint16_t addr, uint8_t *lo, uint8_t *hi) {
     uint32_t full = (uint32_t)addr | 0x10000;   /* bank 1 */
@@ -697,12 +757,9 @@ static void screen_time_warp(void) {
     int8_t x;
     uint16_t i = 0;
 
-    /* Lock player plane horizontally facing right in center of playfield */
-    facing = 8;
-    targetFacing = 8;
-    playerX = PLAYER_X0;
-    playerY = PLAYER_Y0;
-    set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
+    /* CX16 keeps the current heading; the plane stays pinned at PLAYER_X/Y. */
+    set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256,
+               playerX, playerY, 1, 0x50);
 
     x = timeWarpDrawScript[0];
     do {
@@ -801,6 +858,8 @@ static void reset_clouds(void) {
     for (i = 0; i < NUM_CLOUDS; i++) {
         cloudX[i] = cloudInitX[i];
         cloudY[i] = cloudInitY[i];
+        cloudXf[i] = 0;
+        cloudYf[i] = 0;
         uint8_t t = cloudType[i];
         set_sprite(cloudSprite[i], get_cloud_pat(t), (uint16_t)cloudX[i], (uint16_t)cloudY[i], 1, get_cloud_dims(t));
     }
@@ -810,11 +869,15 @@ static void update_clouds(int16_t scrollDx, int16_t scrollDy) {
     uint8_t i;
     for (i = 0; i < NUM_CLOUDS; i++) {
         uint8_t t = cloudType[i];
-        int16_t spd = (t == 0) ? 1 : (t == 1) ? 2 : 3;
         int16_t w = (t == 0) ? 16 : (t == 1) ? 32 : 64;
         int16_t spanX = (int16_t)(224 + w);
-        int16_t cx = (int16_t)cloudX[i] + (scrollDx * spd) / 2;
-        int16_t cy = (int16_t)cloudY[i] + (scrollDy * spd) / 2;
+        uint8_t xi = (uint8_t)(scrollDx + 2), yi = (uint8_t)(scrollDy + 2);
+        uint16_t fx = (uint16_t)cloudXf[i] + cloudFrac[t][xi];
+        uint16_t fy = (uint16_t)cloudYf[i] + cloudFrac[t][yi];
+        cloudXf[i] = (uint8_t)fx;
+        cloudYf[i] = (uint8_t)fy;
+        int16_t cx = (int16_t)cloudX[i] + cloudWhole[t][xi] + (int16_t)(fx >> 8);
+        int16_t cy = (int16_t)cloudY[i] + cloudWhole[t][yi] + (int16_t)(fy >> 8);
         if (cx < -w)       cx += spanX;
         else if (cx > 224) cx -= spanX;
         if (cy < -16)      cy += 256;
@@ -901,6 +964,18 @@ static void upload_pcm_to_vram(void) {
 }
 
 /* ------------------------- Gameplay ------------------------- */
+/* CX16 ai.c aiRandom() - the 8-bit LFSR the reference drives every spawn from.
+ * Seeded to -1 by globalsInit(). */
+static int8_t randomSeed = -1;
+static int8_t aiRandom(void) {
+    int8_t a = (int8_t)(randomSeed << 1);
+    if (randomSeed & 0x80) {
+        a ^= 0x1d;
+    }
+    randomSeed = a;
+    return randomSeed;
+}
+
 static uint16_t get_enemy_pat(uint8_t i) {
     uint8_t f;
     if (stage == 2) {
@@ -935,23 +1010,41 @@ static void check_extra_life(void) {
     }
 }
 
+/* CX16 keeps a running numberOfAIFollowers, decremented from every death and
+ * despawn path. Counting on demand is equivalent and cannot drift - and this
+ * only runs when an enemy actually asks to become a follower. */
+static uint8_t count_followers(void) {
+    uint8_t n = 0, k;
+    for (k = 0; k < NUM_ENEMIES; k++) {
+        if (enemyOn[k] && !enemyBoom[k] && enemyMode[k] == 1) n++;
+    }
+    return n;
+}
+
 static void spawn_enemy(void) {
     uint8_t i;
     for (i = 0; i < NUM_ENEMIES; i++) {
         if (!enemyOn[i]) {
             enemyOn[i] = 1;
             enemyWave[i] = 0;
-            /* Spawn ahead of the player's flight direction (+/- 3 directions jitter) */
-            int8_t jitter = (int8_t)(((frameCount * 5 + i * 7) & 7) - 3);
-            uint8_t a = (uint8_t)((facing + jitter) & 31);
+            /* CX16 ai.c aiSpawnEnemy(): (((aiRandom() & 7) - 4) + playerAngle) & 31 */
+            uint8_t a = (uint8_t)((facing + (aiRandom() & 7) - 4) & 31);
             enemyX[i] = launchX[a];
             enemyY[i] = launchY[a];
             /* Enemy initially flies directly toward player (opposite to launch angle) */
             uint8_t target = (uint8_t)((a + 16) & 31);
             enemyFacing[i] = target;
+            enemyHeading[i] = target;
+            /* CX16 aiSpawnEnemy(): patrol by default, and only a 1-in-2 chance
+             * of joining the (at most numberOfAIFollowersMax) active chasers. */
+            enemyMode[i] = 0;
+            if ((aiRandom() & 64) && count_followers() < numFollowersMax) {
+                enemyMode[i] = 1;
+            }
+            enemyThink[i] = (uint8_t)(T_STEADY_MIN + (aiRandom() & 31));
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
-            enemyTimer[i] = (uint16_t)(30 + ((i * 13) % 25));
+            enemyShot[i] = 0xFF;
             enemyXfrac[i] = 0;
             enemyYfrac[i] = 0;
             set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
@@ -960,30 +1053,75 @@ static void spawn_enemy(void) {
     }
 }
 
-static void spawn_wave(void) {
-    uint8_t count = 0, i;
-    uint8_t a = facing; /* launch from ahead of player */
-    audioPlaySource(AUDIO_WAVE_START);
-    waveEnemiesAlive = 0;
+/* Place one wave member on launch ray `a`. */
+static void wave_place(uint8_t a) {
+    uint8_t i;
     for (i = 0; i < NUM_ENEMIES; i++) {
         if (!enemyOn[i]) {
             enemyOn[i] = 1;
             enemyWave[i] = 1;
-            int16_t ox = (int16_t)((count - 1) * 16);
-            enemyX[i] = launchX[a] + ox;
+            enemyMode[i] = 0;
+            enemyX[i] = launchX[a];
             enemyY[i] = launchY[a];
-            enemyFacing[i] = (uint8_t)((a + 16) & 31);
+            enemyFacing[i] = waveSpawnDir;
+            enemyHeading[i] = waveSpawnDir;
+            enemyThink[i] = waveSpawnDur;
             enemyBoom[i] = 0;
             enemyOffscreen[i] = 0;
-            enemyTimer[i] = (uint16_t)(25 + count * 8);
+            enemyShot[i] = 0xFF;
             enemyXfrac[i] = 0;
             enemyYfrac[i] = 0;
-            set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i), (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
-            count++;
+            set_sprite(SPR_ENEMY_BASE + i, get_enemy_pat(i),
+                       (uint16_t)enemyX[i], (uint16_t)enemyY[i], 1, 0x50);
             waveEnemiesAlive++;
-            if (count >= 4) break;
+            return;
         }
     }
+}
+
+/* CX16 aiEndFrame + aiSpawnWave: 3..5 planes, fanned, arriving in pairs
+ * every 16 frames (odd-sized waves send a singleton first). */
+static void spawn_wave_setup(void) {
+    uint8_t i, live = 0;
+    int8_t n;
+    for (i = 0; i < NUM_ENEMIES; i++) {
+        if (enemyOn[i]) live++;
+    }
+    n = (int8_t)(7 - live);
+    if (n < 3) { waveSpawnN = 0; return; }
+    if (n > 5) n = 5;
+    waveSpawnL = waveSpawnR = facing;
+    if (n == 4) {
+        waveSpawnL = (uint8_t)((waveSpawnL - 1) & 31);
+        waveSpawnR = (uint8_t)((waveSpawnR + 1) & 31);
+    }
+    waveSpawnDir = (uint8_t)((facing + 16) & 31);
+    waveSpawnDur = (uint8_t)(T_WAVE_ENTRY + (aiRandom() & 15));
+    waveSpawnN = (uint8_t)n;
+    waveEnemiesAlive = 0;
+    audioPlaySource(AUDIO_WAVE_START);
+}
+
+static void spawn_wave_pair(void) {
+    wave_place(waveSpawnL);
+    if ((--waveSpawnN) & 1) {
+        wave_place(waveSpawnR);
+        waveSpawnN--;
+    }
+    if (waveSpawnN) {
+        waveSpawnL = (uint8_t)((waveSpawnL - 1) & 31);
+        waveSpawnR = (uint8_t)((waveSpawnR + 1) & 31);
+    }
+}
+
+/* CX16 input.c/ai.c: a trigger pull sets bulletTimer = PLAYER_BULLET_FIRE_TIMER
+ * (24 frames) and aiEndFrame() emits one bullet every 8 frames while it runs -
+ * a 3-round burst per press. The port fired one bullet per input poll instead,
+ * so holding the joystick button produced a continuous 7-bullet stream. */
+#define T_FIRE_BURST    TICKS(24)
+static uint8_t bulletTimer;
+static void request_fire(void) {
+    if (!bulletTimer) bulletTimer = T_FIRE_BURST;
 }
 
 static void fire_bullet(void) {
@@ -1004,42 +1142,187 @@ static void fire_bullet(void) {
     }
 }
 
-static void spawn_ebullet(uint16_t x, uint16_t y, uint8_t speed) {
+static void add_chain_score(void) {
+    if (killTimer >= 15) killMultiplier = 1;
+    killTimer = 0;
+    score += (uint32_t)killMultiplier * 100;
+    if (killMultiplier < 255) killMultiplier++;
+    check_extra_life();
+    g_hudDirty = 1;
+}
+
+static void kill_eb(uint8_t i, uint8_t scored) {
+    uint8_t o = ebOwner[i];
+    uint8_t k = (uint8_t)(ebKind[i] & EB_KMASK);
+    ebOn[i] = 0;
+    hide_sprite(SPR_EBULLET_BASE + i);
+    if (o < NUM_ENEMIES && enemyShot[o] == i) enemyShot[o] = 0xFF;
+    if ((ebKind[i] & EB_TRACKED) && numTracked) numTracked--;
+    if (k == EB_ROCKET && numRockets && !(--numRockets)) {
+        audioStopSource(AUDIO_ROCKET_FLY);
+    }
+    if (scored) {
+        add_chain_score();
+        if (k == EB_BOMB || k == EB_ROCKET) audioPlaySource(AUDIO_WAPON_EXPLODE);
+    }
+}
+
+static void clear_ebullets(void) {
     uint8_t i;
-    int16_t dx = (int16_t)playerX - (int16_t)x;
-    int16_t dy = (int16_t)playerY - (int16_t)y;
     for (i = 0; i < NUM_EBULLETS; i++) {
-        if (!ebOn[i]) {
-            ebOn[i] = 1;
-            ebX[i] = x; ebY[i] = y;
-            ebVX[i] = (int8_t)((dx > 0) ? speed : (dx < 0) ? -speed : 0);
-            ebVY[i] = (int8_t)((dy > 0) ? speed : (dy < 0) ? -speed : 0);
-            uint8_t dims = (stage == 0) ? 0 : 0x50;
-            uint16_t pat = (stage == 0) ? PAT_EBULLET : PAT_WEAPON;
-            set_sprite(SPR_EBULLET_BASE + i, pat, x, y, 1, dims);
-            if (speed == 1) {
-                audioPlaySource(AUDIO_BOMB);
-            } else if (stage >= 2) {
-                audioPlaySource(AUDIO_ROCKET_LAUNCH);
-            } else {
-                audioPlaySource(AUDIO_ENEMY_SHOOT);
+        if (ebOn[i]) {
+            ebOn[i] = 0;
+            hide_sprite(SPR_EBULLET_BASE + i);
+        }
+    }
+    for (i = 0; i < NUM_ENEMIES; i++) enemyShot[i] = 0xFF;
+    numTracked = 0;
+    if (numRockets) {
+        numRockets = 0;
+        audioStopSource(AUDIO_ROCKET_FLY);
+    }
+}
+
+/* CX16 aiEnemy / aiHorizontalFlyer: shot along heading at VELOCITY_200
+ * (VELOCITY_150 for rockets). Returns slot or 0xFF. */
+static uint8_t spawn_eb(uint16_t x, uint16_t y, uint8_t heading,
+                        uint8_t kind, uint8_t owner, uint8_t flags) {
+    uint8_t i, dims;
+    uint16_t pat;
+    for (i = 0; i < NUM_EBULLETS; i++) {
+        if (ebOn[i]) continue;
+        ebOn[i] = 1;
+        ebX[i] = x; ebY[i] = y;
+        ebHead[i] = heading;
+        ebKind[i] = (uint8_t)(kind | flags);
+        ebOwner[i] = owner;
+        if (owner < NUM_ENEMIES) enemyShot[owner] = i;
+        if (flags & EB_TRACKED) numTracked++;
+        dims = 0;
+        switch (kind) {
+        case EB_BOMB:
+            pat = PAT_BOMB + (uint16_t)((flags & EB_RIGHT) ? 0 : 256);
+            dims = 0x50;            /* blob frames are 16x16; CX16 draws 8x8 */
+            audioPlaySource(AUDIO_BOMB);
+            break;
+        case EB_ROCKET:
+            pat = PAT_ROCKET + (uint16_t)(((heading - 8) & 31) >> 1) * 256;
+            dims = 0x50;
+            audioPlaySource(AUDIO_ROCKET_LAUNCH);
+            audioPlaySource(AUDIO_ROCKET_FLY);
+            numRockets++;
+            break;
+        case EB_BOOMER:
+            pat = PAT_BOOMERANG;
+            dims = 0x50;
+            audioPlaySource(AUDIO_ROCKET_LAUNCH);
+            break;
+        case EB_SPACE:
+            pat = PAT_SBULLET;
+            dims = 0x50;
+            break;
+        default:
+            pat = PAT_EBULLET;
+            audioPlaySource(AUDIO_ENEMY_SHOOT);
+            break;
+        }
+        set_sprite(SPR_EBULLET_BASE + i, pat, x, y, 1, dims);
+        return i;
+    }
+    return 0xFF;
+}
+
+static void spawn_flyer_shot(uint16_t x, uint16_t y) {
+    uint8_t heading;
+    if (numTracked >= numTrackedMax) return;
+    heading = (uint8_t)((aiRandom() & 15) + ((x > PF_W / 2) ? 16 : 0));
+    spawn_eb(x, y, heading, (stage == 4) ? EB_SPACE : EB_BULLET, 0xFF, EB_TRACKED);
+}
+
+static void try_enemy_fire(uint8_t i) {
+    uint8_t target, a, ct, kind, flags, h;
+    int16_t ex, ey;
+    if (enemyShot[i] != 0xFF || playerBoom || playerDeadTimer) return;
+    ex = enemyX[i];
+    ey = enemyY[i];
+    target = frame_toward((int16_t)playerX - ex, (int16_t)playerY - ey);
+    if (target == enemyFacing[i]) {
+        a = (uint8_t)((target - facing) & 31);
+        if (a >= 30 || a < 2) {
+            spawn_eb((uint16_t)(ex + 8), (uint16_t)(ey + 4), enemyFacing[i],
+                     (stage == 4) ? EB_SPACE : EB_BULLET, i, 0);
+        }
+    } else if (stage != 1 && numTracked < numTrackedMax) {
+        if (stage == 0) {
+            if ((!launchSide && ex < WEAPON_BORDER) ||
+                (launchSide && ex >= (int16_t)(PF_W - WEAPON_BORDER))) {
+                ct = (uint8_t)((target - 8) & 31);
+                if ((ct < 2 || ct == 31) || (ct >= 15 && ct <= 17)) {
+                    flags = (uint8_t)(EB_TRACKED | (launchSide ? 0 : EB_RIGHT));
+                    h = (flags & EB_RIGHT) ? 5 : 27;   /* CX16 29/19 in IIvera space */
+                    if (spawn_eb((uint16_t)(ex + 8), (uint16_t)(ey + 4), h,
+                                 EB_BOMB, i, flags) != 0xFF) {
+                        launchSide ^= 1;
+                    }
+                }
             }
-            return;
+        } else if ((!launchSide && (ey < WEAPON_BORDER || ex < WEAPON_BORDER)) ||
+                   (launchSide && (ey >= (int16_t)(240 - WEAPON_BORDER) ||
+                                   ex >= (int16_t)(PF_W - WEAPON_BORDER)))) {
+            kind = (stage == 4) ? EB_BOOMER : EB_ROCKET;
+            if (spawn_eb((uint16_t)(ex + 8), (uint16_t)(ey + 4), enemyFacing[i],
+                         kind, i, EB_TRACKED) != 0xFF) {
+                launchSide ^= 1;
+            }
         }
     }
 }
 
 static void spawn_boss(void) {
-    if (!bossOn) {
-        bossOn = 1;
-        bossHp = BOSS_HP;
-        bossFire = 30;
-        bossBoom = 0;
-        bossXpos = 104;
-        bossVX = 3;
-        set_sprite(SPR_BOSS, PAT_BOSS, 104, 60, 1, 0x60);   /* 32x16 huge boss! */
-        audioPlaySource((int8_t)(AUDIO_BOSSL0 + (stage & 3)));   // looping boss theme
+    uint8_t hray = horizontalLaunchRay[facing];
+    uint8_t bframe;
+    bossDir = (hray & 16) ? 1 : -1;
+    bossX = (bossDir > 0) ? -32 : 224;
+    bossY = launchY[hray] + (int16_t)(((aiRandom() & 3) - 2) << 4);
+    bossOn = 1;
+    bossFire = TICKS(32);
+    bossBoom = 0;
+    bframe = (stage == 4) ? 0 : ((bossDir > 0) ? 0 : 4);
+    set_sprite(SPR_BOSS, PAT_BOSS + (uint16_t)bframe * 512,
+               (uint16_t)bossX, (uint16_t)bossY, 1, 0x60);
+}
+
+static void boss_explode(void) {
+    uint8_t k;
+    score += 3000;
+    check_extra_life();
+    popupOn = 1; popupX = bossX + 8; popupY = bossY;
+    popupFrame = POPUP_3000; popupTimer = T_POPUP;
+    g_hudDirty = 1;
+    bossHp = 0;
+    bossOn = 0;
+    bossBoom = T_BOOM32;
+    set_sprite(SPR_BOSS, PAT_EXPL32, (uint16_t)bossX, (uint16_t)bossY, 1, 0x60);
+    audioStopSource(stageBossAudio());
+    audioPlaySource(AUDIO_BIG_EXPLOSION);
+    for (k = 0; k < NUM_ENEMIES; k++) {
+        if (enemyOn[k] && enemyBoom[k] == 0) {
+            enemyBoom[k] = T_BOOM16;
+            set_sprite_pat(SPR_ENEMY_BASE + k, PAT_EXPL);
+        }
     }
+    clear_ebullets();
+    if (bomberOn && bomberBoom == 0) {
+        bomberBoom = T_BOOM32;
+        set_sprite(SPR_BOMBER, PAT_EXPL32, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
+    }
+}
+
+static uint8_t ray_step(uint16_t num, uint16_t den) {
+    return (num < den * 25)  ? 0 :
+           (num < den * 78)  ? 1 :
+           (num < den * 137) ? 2 :
+           (num < den * 210) ? 3 : 4;
 }
 
 /* Blazing-fast octant direction solver (0..31, 0=UP, 8=RIGHT, 16=DOWN, 24=LEFT).
@@ -1052,14 +1335,10 @@ static uint8_t frame_toward(int16_t dx, int16_t dy) {
         ax >>= 1;
         ay >>= 1;
     }
-    uint8_t oct;
+    uint8_t oct, step;
     if (ay >= ax) {
         /* North / South dominant: octants 0, 3, 4, 7 */
-        uint16_t num = (uint16_t)ax << 8;
-        uint8_t step = (num < (uint16_t)ay * 25) ? 0 :
-                       (num < (uint16_t)ay * 78) ? 1 :
-                       (num < (uint16_t)ay * 137) ? 2 :
-                       (num < (uint16_t)ay * 210) ? 3 : 4;
+        step = ray_step((uint16_t)ax << 8, (uint16_t)ay);
         if (dy < 0) {
             oct = (dx >= 0) ? step : (32 - step);
         } else {
@@ -1067,11 +1346,7 @@ static uint8_t frame_toward(int16_t dx, int16_t dy) {
         }
     } else {
         /* East / West dominant: octants 1, 2, 5, 6 */
-        uint16_t num = (uint16_t)ay << 8;
-        uint8_t step = (num < (uint16_t)ax * 25) ? 0 :
-                       (num < (uint16_t)ax * 78) ? 1 :
-                       (num < (uint16_t)ax * 137) ? 2 :
-                       (num < (uint16_t)ax * 210) ? 3 : 4;
+        step = ray_step((uint16_t)ay << 8, (uint16_t)ax);
         if (dx >= 0) {
             oct = (dy < 0) ? (8 - step) : (8 + step);
         } else {
@@ -1081,6 +1356,22 @@ static uint8_t frame_toward(int16_t dx, int16_t dy) {
     return (uint8_t)(oct & 31);
 }
 
+/* CX16 ai.c aiTurnOnRay(): step the heading towards the target the short way
+ * round - one step, or three when the target is 8 or more steps away. */
+static uint8_t turn_on_ray(uint8_t cur, uint8_t target) {
+    uint8_t a = (uint8_t)((target - cur) & 31);
+    if (a) {
+        if (a & 16) {
+            cur--;
+            if (!(a & 8)) cur -= 2;
+        } else {
+            cur++;
+            if (a & 8) cur += 2;
+        }
+    }
+    return (uint8_t)(cur & 31);
+}
+
 /* ------------------------- Update ------------------------- */
 static void update_game(void) {
     uint8_t i;
@@ -1088,22 +1379,28 @@ static void update_game(void) {
     int16_t scrollDy = -(int16_t)velDy[facing];
     uint8_t eW = 16;
 
-    /* Player invulnerability flicker */
-    if (playerInvuln > 0) {
-        playerInvuln--;
-        if (playerBoom == 0 && playerDeadTimer == 0) {
-            if ((playerInvuln & 2) != 0) {
-                hide_sprite(SPR_PLAYER);
-            } else {
-                set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
-            }
-        }
+    if (killTimer < 255) killTimer++;   /* CX16 scoreTimer++ in aiEndFrame() */
+
+    /* CX16 aiEndFrame(): once a life has lasted 1500 frames, allow a third
+     * simultaneous chaser. frameCounter is reset per stage/life there. */
+    if (lifeFrames < 1500) {
+        lifeFrames += 2;
+    } else {
+        numFollowersMax = 3;
+        numTrackedMax = 3;          /* CX16 numberOfTrackedMax */
+    }
+
+    if (bulletTimer) {                  /* CX16 aiEndFrame() bullet emitter */
+        if (!(bulletTimer & 3)) fire_bullet();
+        bulletTimer--;
     }
 
     /* Player explosion handling */
     if (playerBoom > 0) {
         playerBoom--;
-        uint8_t fi = (uint8_t)(((12 - playerBoom) * 4) / 12);
+        /* CX16 explosion frames run 3..0; this ran 0..3, i.e. backwards, and
+         * backwards relative to every other explosion in the port. */
+        uint8_t fi = (uint8_t)(playerBoom >> 3);
         if (fi > 3) fi = 3;
         set_sprite(SPR_PLAYER, PAT_EXPL32 + (uint16_t)fi * 512, playerX, playerY, 1, 0x60);
         if (playerBoom == 0) {
@@ -1138,19 +1435,21 @@ static void update_game(void) {
                 players[activePlayer].stage = stage;
                 players[activePlayer].enemiesKilled = enemiesKilled;
                 players[activePlayer].nextExtraLife = nextExtraLife;
+                players[activePlayer].stageIntroState = stageIntroState;
                 if (lives == 0) {
                     players[activePlayer].alive = 0;
                 }
 
                 uint8_t other = activePlayer ^ 1;
                 if (players[other].alive) {
-                    /* Switch to the other player */
+                    /* CX16 gameNextPlayer: swap on every death */
                     activePlayer = other;
                     score = players[activePlayer].score;
                     lives = players[activePlayer].lives;
                     stage = players[activePlayer].stage;
                     enemiesKilled = players[activePlayer].enemiesKilled;
                     nextExtraLife = players[activePlayer].nextExtraLife;
+                    stageIntroState = players[activePlayer].stageIntroState;
                     killMultiplier = 1;
                     killTimer = 0;
 
@@ -1159,25 +1458,23 @@ static void update_game(void) {
                         enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                         hide_sprite(SPR_ENEMY_BASE + i);
                     }
-                    for (i = 0; i < NUM_EBULLETS; i++) {
-                        ebOn[i] = 0;
-                        hide_sprite(SPR_EBULLET_BASE + i);
-                    }
+                    clear_ebullets();
                     for (i = 0; i < NUM_BULLETS; i++) {
                         bulletOn[i] = 0;
                         hide_sprite(SPR_BULLET_BASE + i);
                     }
                     paraOn = 0;
-                    paraTimer = 540;
+                    paraTimer = T_PARACHUTE;
                     set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
                     bomberOn = 0;
                     bomberBoom = 0;
-                    bomberTimer = 300;
+                    bomberTimer = T_BOMBER;
                     set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
                     popupOn = 0;
                     set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
                     bossOn = 0;
                     bossBoom = 0;
+                    bossTimer = T_BOSS;
                     set_sprite(SPR_BOSS, PAT_BOSS, 0, 0, 0, 0);
 
                     playerX = PLAYER_X0;
@@ -1198,9 +1495,12 @@ static void update_game(void) {
                     waitvsync();
                     VERA.display.video = 0x51; /* Atomic reveal */
 
-                    announceT = 50;
+                    announceT = 0;
                     g_annDrawn = 0;
-                    stageIntroState = 0;
+                    lifeFrames = 0;
+                    numFollowersMax = 2;
+                    numTrackedMax = 2;
+                    launchSide = 0;
                     state = 4;      /* Stage announce for other player */
                     return;
                 } else if (lives == 0) {
@@ -1233,14 +1533,17 @@ static void update_game(void) {
                 enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                 hide_sprite(SPR_ENEMY_BASE + i);
             }
-            for (i = 0; i < NUM_EBULLETS; i++) {
-                ebOn[i] = 0;
-                hide_sprite(SPR_EBULLET_BASE + i);
-            }
+            clear_ebullets();
             for (i = 0; i < NUM_BULLETS; i++) {
                 bulletOn[i] = 0;
                 hide_sprite(SPR_BULLET_BASE + i);
             }
+            if (bossOn) {
+                bossOn = 0;
+                hide_sprite(SPR_BOSS);
+            }
+            bossBoom = 0;
+            bossTimer = T_BOSS;
             playerX = PLAYER_X0;
             playerY = PLAYER_Y0;
             facing = 8; /* Facing RIGHT */
@@ -1248,11 +1551,29 @@ static void update_game(void) {
             set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
             reset_clouds();
             g_hudDirty = 1;
+            lifeFrames = 0;
+            waveTimer = 0;
+            numFollowersMax = 2;        /* CX16 globalsStageInit() */
+            numTrackedMax = 2;
+            launchSide = 0;
+            if (bossRam) {
+                /* CX16 ram: skip warp, advance era, full stage announce */
+                bossRam = 0;
+                stage = (uint8_t)((stage + 1) % NUM_STAGES);
+                enemiesKilled = 0;
+                bossHp = BOSS_HP;
+                upload_stage_art();
+                screen_wipe_to_sky(stage);
+                set_stage_palette();
+                paint_status_bar();
+                announceT = 0;
+                stageIntroState = 0;
+            } else {
+                announceT = 0;
+                stageIntroState = 1;
+            }
             draw_hud();
-            announceT = 35; /* ~1.5s READY countdown */
             g_annDrawn = 0;
-            stageIntroState = 1;
-            playerInvuln = 90;  /* 1.5s spawn invulnerability */
             state = 4;      /* Stage announce / READY */
             return;
         }
@@ -1276,40 +1597,53 @@ static void update_game(void) {
         }
     }
 
-    /* Enemy bullets: world scroll + heading, with era weapons:
-     * Stage 1: bombs (gravity)
-     * Stage 2: boomerangs (spinning)
-     * Stage 3: rockets (tracking)
-     * Stage 4: space bullets (pulsing) */
+    /* Enemy weapons. Kind, not stage: a 1910 plane can have a bullet and a
+     * later bomb in different slots; boss spray is always a dumb bullet. */
     for (i = 0; i < NUM_EBULLETS; i++) {
         if (ebOn[i]) {
+            uint8_t k = (uint8_t)(ebKind[i] & EB_KMASK);
+            uint8_t h = ebHead[i];
+            int8_t hs = 4;              /* VELOCITY_200 ≈ vel * 2 */
             int16_t bx, by;
-            if (stage == 1) {
-                bx = (int16_t)ebX[i] + ebVX[i] / 2 + scrollDx;
-                by = (int16_t)ebY[i] + ebVY[i] + scrollDy + 2;
-                set_sprite_pat(SPR_EBULLET_BASE + i, PAT_WEAPON + (uint16_t)(frameCount & 1) * 256);
-            } else if (stage == 2) {
-                bx = (int16_t)ebX[i] + ebVX[i] + scrollDx;
-                by = (int16_t)ebY[i] + ebVY[i] + scrollDy;
-                set_sprite_pat(SPR_EBULLET_BASE + i, PAT_WEAPON + (uint16_t)(frameCount & 7) * 256);
-            } else if (stage == 3) {
-                int16_t rdx = (int16_t)playerX - (int16_t)ebX[i];
-                int16_t rdy = (int16_t)playerY - (int16_t)ebY[i];
-                uint8_t a = frame_toward(rdx, rdy);
-                bx = (int16_t)ebX[i] + ((int16_t)velDx[a] >> 1) + scrollDx;
-                by = (int16_t)ebY[i] + ((int16_t)velDy[a] >> 1) + scrollDy;
-                set_sprite_pat(SPR_EBULLET_BASE + i, PAT_WEAPON + (uint16_t)(a >> 1) * 256);
-            } else if (stage == 4) {
-                bx = (int16_t)ebX[i] + ebVX[i] + scrollDx;
-                by = (int16_t)ebY[i] + ebVY[i] + scrollDy;
-                set_sprite_pat(SPR_EBULLET_BASE + i, PAT_WEAPON + (uint16_t)(frameCount & 7) * 256);
-            } else {
-                bx = (int16_t)ebX[i] + ebVX[i] + scrollDx;
-                by = (int16_t)ebY[i] + ebVY[i] + scrollDy;
+            if (k == EB_BOMB) {
+                /* CX16 aiEnemyBombs: heading 29→6 (right) / 19→10 (left),
+                 * +8 into IIvera space → 5→14 / 27→18. VELOCITY_150 until
+                 * settled, then 200. Frame is throw direction, not heading. */
+                if (ebKind[i] & EB_RIGHT) {
+                    if (h != 14) {
+                        if (!(frameCount & 3)) ebHead[i] = h = (uint8_t)((h + 1) & 31);
+                        hs = 3;
+                    }
+                } else if (h != 18) {
+                    if (!(frameCount & 3)) ebHead[i] = h = (uint8_t)((h - 1) & 31);
+                    hs = 3;
+                }
+            } else if (k == EB_ROCKET) {
+                if (!(frameCount & 15)) {
+                    ebHead[i] = h = turn_on_ray(h,
+                        frame_toward((int16_t)playerX - (int16_t)ebX[i],
+                                     (int16_t)playerY - (int16_t)ebY[i]));
+                    set_sprite_pat(SPR_EBULLET_BASE + i,
+                        PAT_ROCKET + (uint16_t)(((h - 8) & 31) >> 1) * 256);
+                }
+                hs = 3;                 /* VELOCITY_150 */
+            } else if (k == EB_BOOMER) {
+                if (!(frameCount & 15) &&
+                    ebX[i] > 48 && ebX[i] < 176 && ebY[i] > 56 && ebY[i] < 184) {
+                    ebHead[i] = h = turn_on_ray(h,
+                        frame_toward((int16_t)playerX - (int16_t)ebX[i],
+                                     (int16_t)playerY - (int16_t)ebY[i]));
+                }
+                set_sprite_pat(SPR_EBULLET_BASE + i,
+                    PAT_BOOMERANG + (uint16_t)(frameCount & 7) * 256);
+            } else if (k == EB_SPACE) {
+                set_sprite_pat(SPR_EBULLET_BASE + i,
+                    PAT_SBULLET + (uint16_t)((frameCount >> 2) & 3) * 256);
             }
+            bx = (int16_t)ebX[i] + (int16_t)((velDx[h] * hs) / 2) + scrollDx;
+            by = (int16_t)ebY[i] + (int16_t)((velDy[h] * hs) / 2) + scrollDy;
             if (bx < PF_XMIN || bx > PF_XMAX || by < PF_YMIN || by > PF_YMAX) {
-                ebOn[i] = 0;
-                hide_sprite(SPR_EBULLET_BASE + i);
+                kill_eb(i, 0);
             } else {
                 ebX[i] = (uint16_t)bx; ebY[i] = (uint16_t)by;
                 move_sprite(SPR_EBULLET_BASE + i, (uint16_t)bx, (uint16_t)by);
@@ -1321,37 +1655,66 @@ static void update_game(void) {
     for (i = 0; i < NUM_ENEMIES; i++) {
         if (enemyOn[i]) {
             if (enemyBoom[i] > 0) {
+                if (enemyShot[i] != 0xFF) {
+                    ebOwner[enemyShot[i]] = 0xFE;
+                    enemyShot[i] = 0xFF;
+                }
                 enemyBoom[i]--;
                 if (enemyBoom[i] == 0) {
                     enemyOn[i] = 0;
                     set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY, 0, 0, 0, 0);
                 } else {
-                    uint8_t fi = enemyBoom[i] >> 1;
+                    uint8_t fi = enemyBoom[i] >> 2;
                     if (fi > 3) fi = 3;
                     set_sprite_pat(SPR_ENEMY_BASE + i, PAT_EXPL + (uint16_t)fi * 256);
                 }
                 continue;
             }
 
-            /* 1. Steer toward player using shortest angular arc.
-             * CX16 parity: Staggered turns every 8 frames for wave attack squadrons
-             * and every 16 frames for patrol planes in eras 0..2 (wide pursuit arcs).
-             * Eras 3..4 (jets & UFOs) turn every 8 frames for agile pursuit. */
-            uint8_t turnMask = (stage < 3) ? (enemyWave[i] ? 7 : 15) : 7;
-            if (((frameCount + (i * 2)) & turnMask) == 0) {
-                int16_t dx = (int16_t)playerX - enemyX[i];
-                int16_t dy = (int16_t)playerY - enemyY[i];
-                uint8_t targetAngle = frame_toward(dx, dy);
-                uint8_t diff = (uint8_t)((targetAngle - enemyFacing[i]) & 31);
+            /* 1. CX16 ai.c aiEnemy(): every enemy slot thinks once per 8 frames
+             * and turns at most one step of 1/32. Crucially, most enemies do NOT
+             * chase - they patrol on a random heading held for 22..53 think
+             * ticks, and only up to numberOfAIFollowersMax of them ride the beam
+             * to the player at any time. The port made all eight home in on the
+             * player, every think tick, permanently. */
+            if (((frameCount + (i * 2)) & 7) == 0) {
+                if (enemyWave[i]) {
+                    if (!--enemyThink[i]) {
+                        if (enemyMode[i]) {
+                            enemyWave[i] = 0;           /* the wave disbands */
+                        } else {
+                            if (count_followers() < numFollowersMax) {
+                                enemyMode[i] = 1;       /* AI_FOLLOW */
+                            } else {
+                                enemyMode[i] = 2;       /* AI_FLEE; CX16 still lets them fire */
+                            }
+                            enemyThink[i] = T_WAVE_ACTIVE;
+                        }
+                    }
+                } else if (!--enemyThink[i]) {
+                    enemyHeading[i] = (uint8_t)(aiRandom() & 31);
+                    enemyThink[i] = (uint8_t)(T_STEADY_MIN + (aiRandom() & 31));
+                }
+
+                if (enemyMode[i]) {
+                    /* CX16 reads the beam out of its 1KB rays[32][32] table;
+                     * computing the bearing directly is the same answer without
+                     * the table, which will not fit on this machine. */
+                    uint8_t t = frame_toward((int16_t)playerX - enemyX[i],
+                                             (int16_t)playerY - enemyY[i]);
+                    enemyHeading[i] = (enemyMode[i] == 2) ? (uint8_t)((t + 16) & 31) : t;
+                }
+
+                uint8_t diff = (uint8_t)((enemyHeading[i] - enemyFacing[i]) & 31);
                 if (diff != 0) {
-                    if (diff < 16) {
-                        enemyFacing[i] = (uint8_t)((enemyFacing[i] + 1) & 31); /* turn clockwise */
+                    if (diff & 16) {
+                        enemyFacing[i] = (uint8_t)((enemyFacing[i] - 1) & 31);
                     } else {
-                        enemyFacing[i] = (uint8_t)((enemyFacing[i] - 1) & 31); /* turn counter-clockwise */
+                        enemyFacing[i] = (uint8_t)((enemyFacing[i] + 1) & 31);
                     }
                 }
-                /* Update sprite rotation / animation frame */
                 set_sprite_pat(SPR_ENEMY_BASE + i, get_enemy_pat(i));
+                try_enemy_fire(i);
             } else if (stage == 4 && !(frameCount & 3)) {
                 /* Space UFOs (Stage 4) animate continuous light pulsing even when not steering */
                 set_sprite_pat(SPR_ENEMY_BASE + i, get_enemy_pat(i));
@@ -1382,6 +1745,10 @@ static void update_game(void) {
             /* 3. Off-screen tolerance: only despawn after drifting far off */
             if (ex < -32 || ex > 240 || ey < -32 || ey > 260) {
                 if (++enemyOffscreen[i] > 30) {
+                    if (enemyShot[i] != 0xFF) {
+                        ebOwner[enemyShot[i]] = 0xFE;
+                        enemyShot[i] = 0xFF;
+                    }
                     enemyOn[i] = 0;
                     set_sprite(SPR_ENEMY_BASE + i, PAT_ENEMY, 0, 0, 0, 0);
                 } else {
@@ -1394,105 +1761,61 @@ static void update_game(void) {
                 enemyX[i] = ex;
                 enemyY[i] = ey;
                 move_sprite(SPR_ENEMY_BASE + i, (uint16_t)ex, (uint16_t)ey);
-
-                /* 4. Fire bullet when player is in sight */
-                if (--enemyTimer[i] == 0) {
-                    enemyTimer[i] = (uint16_t)(45 + ((i * 7) % 30));
-                    int16_t dx = (int16_t)playerX - ex;
-                    int16_t dy = (int16_t)playerY - ey;
-                    uint8_t target = frame_toward(dx, dy);
-                    uint8_t adiff = (uint8_t)((target - enemyFacing[i]) & 31);
-                    if (adiff <= 2 || adiff >= 30) {
-                        spawn_ebullet((uint16_t)(ex + 8), (uint16_t)(ey + 8), 3);
-                    }
-                }
             }
         }
     }
 
-    /* Boss: fly horizontally, fire; player bullets vs boss; boss vs player. */
+    /* Boss: CX16 aiHorizontalFlyer — enter from one side, cross with world
+     * scroll + VELOCITY_100, leave, respawn after LEVELBOSS_TIMER. */
     if (bossOn) {
-        bossXpos = (uint16_t)((int16_t)bossXpos + bossVX + scrollDx);
-        if (bossXpos < 10)  bossVX = 3;
-        if (bossXpos > 180) bossVX = -3;
+        uint16_t bPat;
+        bossX += scrollDx + (int16_t)bossDir * 2;   /* world + VELOCITY_100-ish */
+        bossY += scrollDy;
 
-        /* Directional sprite & damage smoke animation: 32x16 */
-        uint16_t bPat = PAT_BOSS;
-        if (stage == 4) {
-            /* Space Mothership (A.D. 2001): 2-frame pulsating energy core */
-            bPat += (uint16_t)((frameCount >> 2) & 1) * 512;
+        if (bossX < -48 || bossX > 256 || bossY < -32 || bossY > 260) {
+            bossOn = 0;
+            hide_sprite(SPR_BOSS);
+            bossTimer = T_BOSS;         /* CX16 aiLevelBoss REMOVE → timer reload */
         } else {
-            uint8_t dirOff = (bossVX > 0) ? 0 : 4;  /* frames 0..3 right, 4..7 left */
-            uint8_t damageFrame = 0;
-            if (bossHp < BOSS_HP) {
-                /* Progressive damage smoke: only billows after being damaged by player! */
-                uint8_t maxD = 1;
-                if (bossHp <= 2) {
-                    maxD = 3;       /* Heavy damage: frames 0..3 */
-                } else if (bossHp <= 3) {
-                    maxD = 2;       /* Medium damage: frames 0..2 */
+            bPat = PAT_BOSS;
+            if (stage == 4) {
+                bPat += (uint16_t)((frameCount >> 2) & 1) * 512;
+            } else {
+                uint8_t dirOff = (bossDir > 0) ? 0 : 4;
+                uint8_t damageFrame = 0;
+                if (bossHp < BOSS_HP) {
+                    uint8_t maxD = bossAnimFrames[bossHp >> 1];
+                    damageFrame = (uint8_t)(maxD - ((frameCount >> 2) % (maxD + 1)));
                 }
-                /* Billowing smoke puffs cycling between 0 and maxD */
-                damageFrame = (uint8_t)((frameCount >> 2) % (maxD + 1));
+                bPat += (uint16_t)(dirOff + damageFrame) * 512;
             }
-            bPat += (uint16_t)(dirOff + damageFrame) * 512;
-        }
-        set_sprite_pat(SPR_BOSS, bPat);
-        move_sprite(SPR_BOSS, bossXpos, 60);
+            set_sprite_pat(SPR_BOSS, bPat);
+            move_sprite(SPR_BOSS, (uint16_t)bossX, (uint16_t)bossY);
 
-        if (--bossFire == 0) {
-            bossFire = 25;
-            spawn_ebullet(bossXpos + 16, 60 + 8, 4);
-        }
-        for (i = 0; i < NUM_BULLETS; i++) {
-            if (bulletOn[i]) {
-                int16_t bx = (int16_t)bulletX[i], by = (int16_t)bulletY[i];
-                if (bx + 8 > bossXpos && bx < bossXpos + 32 &&
-                    by + 8 > 60 && by < 60 + 16) {
-                    bulletOn[i] = 0;
-                    hide_sprite(SPR_BULLET_BASE + i);
-                    if (--bossHp == 0) {
-                        bossHp = 0;
-                        bossBoom = 25;
-                        bossOn = 0;
-                        set_sprite(SPR_BOSS, PAT_EXPL32, bossXpos, 60, 1, 0x60);
-                        score += 3000;
-                        check_extra_life();
-                        popupOn = 1; popupX = (int16_t)bossXpos + 8; popupY = 60; popupFrame = POPUP_3000; popupTimer = 45; /* "3000" popup */
-                        g_hudDirty = 1;
-                        audioPlaySource(AUDIO_BIG_EXPLOSION);
-                        /* Spectacular boss defeat: all airborne enemies and bomber explode! */
-                        for (uint8_t k = 0; k < NUM_ENEMIES; k++) {
-                            if (enemyOn[k] && enemyBoom[k] == 0) {
-                                enemyBoom[k] = 20;
-                                set_sprite_pat(SPR_ENEMY_BASE + k, PAT_EXPL);
-                            }
-                        }
-                        for (uint8_t k = 0; k < NUM_EBULLETS; k++) {
-                            if (ebOn[k]) {
-                                ebOn[k] = 0;
-                                hide_sprite(SPR_EBULLET_BASE + k);
-                            }
-                        }
-                        if (bomberOn && bomberBoom == 0) {
-                            bomberBoom = 20;
-                            bomberOn = 0;
-                            set_sprite(SPR_BOMBER, PAT_EXPL32, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
-                        }
+            if (--bossFire == 0) {
+                bossFire = TICKS(32);
+                spawn_flyer_shot((uint16_t)(bossX + 16), (uint16_t)(bossY + 8));
+            }
+            for (i = 0; i < NUM_BULLETS; i++) {
+                if (bulletOn[i]) {
+                    int16_t bx = (int16_t)bulletX[i], by = (int16_t)bulletY[i];
+                    if (bx + 8 > bossX && bx < bossX + 32 &&
+                        by + 8 > bossY && by < bossY + 16) {
+                        bulletOn[i] = 0;
+                        hide_sprite(SPR_BULLET_BASE + i);
+                        if (--bossHp == 0) boss_explode();
+                        else add_chain_score();
+                        break;
                     }
                 }
             }
-        }
-        /* Tight player hitbox: CX16 tests against a 6x6 box at the middle of the
-         * player sprite (PLAYER_X+5 .. PLAYER_X+11), not the full 16x16 rect.
-         * See TimePilot-CX16/src/things.c thingsSortAndCollide():
-         *   "make the collision box a lot tighter, more forgiving" */
-        if (playerInvuln == 0 && bossXpos < playerX + 11 && bossXpos + 32 > playerX + 5 &&
-            60 < playerY + 11 && 60 + 16 > playerY + 5) {
-            bossBoom = 20;
-            bossOn = 0;
-            set_sprite(SPR_BOSS, PAT_EXPL32, bossXpos, 60, 1, 0x60);
-            lose_life();
+            if (bossOn && playerBoom == 0 && playerDeadTimer == 0 &&
+                bossX < (int16_t)playerX + 11 && bossX + 32 > (int16_t)playerX + 5 &&
+                bossY < (int16_t)playerY + 11 && bossY + 16 > (int16_t)playerY + 5) {
+                bossRam = 1;
+                boss_explode();
+                lose_life();
+            }
         }
     }
 
@@ -1506,45 +1829,44 @@ static void update_game(void) {
                 if (enemyOn[j]) { enemyOn[j] = 0; enemyBoom[j] = 0; hide_sprite(SPR_ENEMY_BASE + j); }
             }
             for (uint8_t j = 0; j < NUM_BULLETS; j++) { if (bulletOn[j]) { bulletOn[j] = 0; hide_sprite(SPR_BULLET_BASE + j); } }
-            for (uint8_t j = 0; j < NUM_EBULLETS; j++) { if (ebOn[j]) { ebOn[j] = 0; hide_sprite(SPR_EBULLET_BASE + j); } }
+            clear_ebullets();
             paraOn = 0;
-            paraTimer = 540;
+            paraTimer = T_PARACHUTE;
             set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
             bomberOn = 0;
             bomberBoom = 0;
-            bomberTimer = 300;
+            bomberTimer = T_BOMBER;
             set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
             popupOn = 0;
             set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
 
-            /* Display STAGE CLEAR in upper playfield (Row 10, Col 8) safely above player plane for 3 seconds */
-            draw_text(10, 8, sStageClear, 9);
-            stageClearTimer = 180;
-            audioPlaySource(AUDIO_NEXT_LEVEL);
+            if (!bossRam) {
+                draw_text(10, 8, sStageClear, 9);
+                stageClearTimer = T_STAGE_CLEAR;
+                audioPlaySource(AUDIO_NEXT_LEVEL);
+            }
         } else {
-            uint8_t fi = (uint8_t)((bossBoom * 4) / 20);
+            uint8_t fi = (uint8_t)(bossBoom >> 3);
             if (fi > 3) fi = 3;
-            set_sprite(SPR_BOSS, PAT_EXPL32 + (uint16_t)fi * 512, (uint16_t)bossXpos, 60, 1, 0x60);
+            set_sprite(SPR_BOSS, PAT_EXPL32 + (uint16_t)fi * 512,
+                       (uint16_t)bossX, (uint16_t)bossY, 1, 0x60);
         }
     }
 
-    /* Auto-clear STAGE CLEAR after 3s, then execute authentic Time Warp! */
+    /* 3s hold (CX16 PLAYER_DIED_TIMER), TIMEWARP at 1s, then the beam.
+     * Clouds stay; heading is current (CX16 screenTimeWarp). */
     if (stageClearTimer > 0) {
         stageClearTimer--;
+        if (stageClearTimer == 60) audioPlaySource(AUDIO_TIMEWARP);
         if (stageClearTimer == 0) {
-            /* Erase STAGE CLEAR text banner */
             draw_text(10, 8, "           ", 0);
 
-            /* Wipe all leftover enemies, bullets, bomber, and boss from previous era */
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
                 enemyXfrac[i] = 0; enemyYfrac[i] = 0;
                 hide_sprite(SPR_ENEMY_BASE + i);
             }
-            for (i = 0; i < NUM_EBULLETS; i++) {
-                ebOn[i] = 0;
-                hide_sprite(SPR_EBULLET_BASE + i);
-            }
+            clear_ebullets();
             for (i = 0; i < NUM_BULLETS; i++) {
                 bulletOn[i] = 0;
                 hide_sprite(SPR_BULLET_BASE + i);
@@ -1553,20 +1875,18 @@ static void update_game(void) {
             bomberOn = 0; bomberBoom = 0; hide_sprite(SPR_BOMBER);
             bossOn = 0; bossBoom = 0; hide_sprite(SPR_BOSS);
 
-            /* Hide all clouds during Time Warp so the hyperspace beam is completely unobstructed */
-            for (uint8_t c = 0; c < NUM_CLOUDS; c++) {
-                hide_sprite(cloudSprite[c]);
-            }
-
-            /* Play authentic 1982 arcade Time Warp hyperspace PCM as warp beam opens! */
-            audioPlaySource(AUDIO_TIMEWARP);
-
-            /* Execute authentic CX16 / Arcade hyperspace Time Warp sequence! */
             screen_time_warp();
 
             stage = (uint8_t)((stage + 1) % NUM_STAGES);
             enemiesKilled = 0;
-            playerInvuln = 90;  /* 1.5s invulnerability upon entering new era */
+            bossHp = BOSS_HP;
+            bossTimer = T_BOSS;
+            bossRam = 0;
+            lifeFrames = 0;
+            waveTimer = 0;
+            numFollowersMax = 2;        /* CX16 globalsStageInit() */
+            numTrackedMax = 2;
+            launchSide = 0;
 
             screen_wipe_to_sky(stage);      /* counter-clockwise radar sweep to next era! */
             set_stage_palette();
@@ -1580,8 +1900,7 @@ static void update_game(void) {
             set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
             reset_clouds();
 
-            /* Transition to authentic stage announce screen (PLAYER 1 / A.D. XXXX / STAGE X) */
-            announceT = 100;
+            announceT = 0;
             g_annDrawn = 0;
             stageIntroState = 0;
             state = 4;
@@ -1589,10 +1908,30 @@ static void update_game(void) {
         }
     }
 
-    /* Player bullet vs enemy. */
+    /* Player bullet vs shootable weapons, then vs enemy.
+     * CX16: bombs/rockets/boomerangs/space bullets collide with player
+     * bullets; plain LAYER_ENEMY_BULLETS do not. */
     for (i = 0; i < NUM_BULLETS; i++) {
         if (bulletOn[i]) {
             int16_t bx = (int16_t)bulletX[i], by = (int16_t)bulletY[i];
+            uint8_t hit = 0;
+            for (uint8_t j = 0; j < NUM_EBULLETS; j++) {
+                uint8_t k, ew;
+                int16_t ex, ey;
+                if (!ebOn[j]) continue;
+                k = (uint8_t)(ebKind[j] & EB_KMASK);
+                if (k == EB_BULLET) continue;
+                ew = 16;                /* bomb/rocket/boomer/space art is 16x16 in the blob */
+                ex = (int16_t)ebX[j]; ey = (int16_t)ebY[j];
+                if (bx + 8 > ex && bx < ex + ew && by + 8 > ey && by < ey + ew) {
+                    kill_eb(j, 1);
+                    bulletOn[i] = 0;
+                    hide_sprite(SPR_BULLET_BASE + i);
+                    hit = 1;
+                    break;
+                }
+            }
+            if (hit) continue;
             for (uint8_t j = 0; j < NUM_ENEMIES; j++) {
                 if (enemyOn[j] && enemyBoom[j] == 0) {
                     int16_t ddx = bx - enemyX[j];
@@ -1600,20 +1939,13 @@ static void update_game(void) {
                         int16_t ddy = by - enemyY[j];
                         if ((uint16_t)(ddy + 7) < (uint16_t)(eW + 7)) {
                             int16_t ex = enemyX[j], ey = enemyY[j];
-                            enemyBoom[j] = 8;
+                            enemyBoom[j] = T_BOOM16;
                             set_sprite_pat(SPR_ENEMY_BASE + j, PAT_EXPL);
                             bulletOn[i] = 0;
                             hide_sprite(SPR_BULLET_BASE + i);
 
-                            /* Multiplier scoring: 100 -> 200 -> 300 -> 400 */
-                            if (killTimer >= 30) {
-                                killMultiplier = 1;
-                            }
-                            killTimer = 0;
-                            score += (uint32_t)killMultiplier * 100;
-                            if (killMultiplier < 4) killMultiplier++;
+                            add_chain_score();
                             enemiesKilled++;
-                            check_extra_life();
                             audioPlaySource(AUDIO_ENEMY_EXPLODE);
 
                             /* Wave Squadron wipeout bonus */
@@ -1625,7 +1957,7 @@ static void update_game(void) {
                                         /* 4-plane wave wiped out! 2000 pts bonus! */
                                         score += 2000;
                                         check_extra_life();
-                                        popupOn = 1; popupX = ex; popupY = ey; popupFrame = POPUP_2000; popupTimer = 45; /* "2000" frame */
+                                        popupOn = 1; popupX = ex; popupY = ey; popupFrame = POPUP_2000; popupTimer = T_POPUP; /* "2000" frame */
                                         audioPlaySource(AUDIO_PICKUP);
                                     }
                                 }
@@ -1638,32 +1970,56 @@ static void update_game(void) {
         }
     }
 
-    /* Spawn enemies; periodic formation wave; after kills the boss appears. */
-    if (!bossOn && bossBoom == 0 && stageClearTimer == 0) {
+    /* CX16: parachute/bomber stop once enemiesKilled > 48; regular enemies
+     * and waves keep coming while the boss is in the air. Boss itself waits
+     * LEVELBOSS_TIMER after the 49th kill, enters from a side, and can leave
+     * and come back. */
+    if (bossHp > 0 && bossBoom == 0 && stageClearTimer == 0) {
+        if (enemiesKilled > ENEMIES_TO_BOSS) {
+            if (!audioIsSourcePlaying(stageBossAudio())) {
+                audioPlaySource(stageBossAudio());
+            }
+            if (!bossOn && bossTimer >= 0) {
+                if (--bossTimer < 0) spawn_boss();
+            }
+        }
+
         static uint8_t spawnCounter = 0;
-        uint8_t scMax = isDemoMode ? 60 : 25;
-        if (++spawnCounter >= scMax) {
+        uint8_t scMax = isDemoMode ? (T_SPAWN * 2) : T_SPAWN;
+        if (stage != 4) {
+            ++waveTimer;
+            if (waveTimer < T_WAVE) {
+                if (waveTimer == T_RECALL) {
+                    uint8_t k;
+                    for (k = 0; k < NUM_ENEMIES; k++) {
+                        if (enemyOn[k]) enemyMode[k] = 2;
+                    }
+                }
+            } else if (waveTimer == T_WAVE) {
+                spawn_wave_setup();
+                if (!waveSpawnN) waveTimer = 0;
+            } else if (!(waveTimer & 7) && waveSpawnN) {
+                spawn_wave_pair();
+                if (!waveSpawnN) waveTimer = 0;
+            }
+        }
+        if ((stage == 4 || waveTimer < T_RECALL) && ++spawnCounter >= scMax) {
             spawnCounter = 0;
             spawn_enemy();
         }
-        if (++waveTimer >= 600) {
-            waveTimer = 0;
-            spawn_wave();
-        }
-        if (enemiesKilled >= ENEMIES_TO_BOSS) {
-            spawn_boss();
-        }
     }
 
-    /* Enemy bullet vs player; enemy vs player (only if player alive and not invulnerable). */
-    if (playerBoom == 0 && playerDeadTimer == 0 && playerInvuln == 0) {
+    /* Enemy bullet vs player; enemy vs player (only if player alive). */
+    if (playerBoom == 0 && playerDeadTimer == 0) {
         for (i = 0; i < NUM_EBULLETS; i++) {
             if (ebOn[i]) {
+                uint8_t k = (uint8_t)(ebKind[i] & EB_KMASK);
+                uint8_t ew = (k == EB_BULLET) ? 8 : 16;
                 int16_t bx = (int16_t)ebX[i], by = (int16_t)ebY[i];
-                /* CX16 tight box: bx < PX+11 && bx+8 > PX+5  ->  bx in [PX-2, PX+10] */
-                if ((uint16_t)(bx - (PLAYER_X0 - 2)) < 13 && (uint16_t)(by - (PLAYER_Y0 - 2)) < 13) {
-                    ebOn[i] = 0;
-                    hide_sprite(SPR_EBULLET_BASE + i);
+                /* CX16 tight player box vs weapon AABB: min < PX+11 && max > PX+5 */
+                if (bx < (int16_t)PLAYER_X0 + 11 && bx + ew > (int16_t)PLAYER_X0 + 5 &&
+                    by < (int16_t)PLAYER_Y0 + 11 && by + ew > (int16_t)PLAYER_Y0 + 5) {
+                    kill_eb(i, 0);
                     lose_life();
                     break;
                 }
@@ -1676,7 +2032,7 @@ static void update_game(void) {
                 if ((uint16_t)(dex + eW - 6) < (uint16_t)(eW + 5)) {
                     int16_t dey = enemyY[i] - (int16_t)playerY;
                     if ((uint16_t)(dey + eW - 6) < (uint16_t)(eW + 5)) {
-                        enemyBoom[i] = 8;
+                        enemyBoom[i] = T_BOOM16;
                         set_sprite_pat(SPR_ENEMY_BASE + i, PAT_EXPL);
                         lose_life();
                         break;
@@ -1686,15 +2042,20 @@ static void update_game(void) {
         }
     }
 
-    /* Parachute bonus pickup (stages 0..3) */
+    /* Parachute bonus pickup (stages 0..3). CX16 stops new chutes once the
+     * boss kill-count is met; an already-airborne one still drifts. */
     if (stage < 4) {
         if (!paraOn) {
-            if (paraTimer > 0) {
+            if (enemiesKilled <= ENEMIES_TO_BOSS && paraTimer > 0) {
                 paraTimer--;
                 if (paraTimer == 0) {
                     paraOn = 1;
-                    paraX = (int16_t)(30 + ((frameCount * 37) % 150));
-                    paraY = PF_YMIN;
+                    /* CX16 aiEndFrame(): X = (playerAngle + ((rand&3)-2)) & 31,
+                     * then launchPos[X] - the parachute appears on the horizon
+                     * ahead of you rather than dropping in from the top edge. */
+                    uint8_t pa = (uint8_t)((facing + (aiRandom() & 3) - 2) & 31);
+                    paraX = launchX[pa];
+                    paraY = launchY[pa];
                     paraAnim = 0;
                     set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, (uint16_t)paraX, (uint16_t)paraY, 1, 0x50);
                 }
@@ -1706,10 +2067,10 @@ static void update_game(void) {
                 set_sprite_pat(SPR_PARACHUTE, PAT_PARACHUTE + (uint16_t)paraFrames[paraAnim] * 256);
             }
             paraX += scrollDx;
-            paraY += scrollDy + 1; /* drifts downward */
+            paraY += scrollDy;     /* CX16 aiParachute: world scroll only */
             if (paraX < -20 || paraX > PF_W + 10 || paraY < -20 || paraY > PF_YMAX + 20) {
                 paraOn = 0;
-                paraTimer = 540;
+                paraTimer = T_PARACHUTE;
                 paraBonusStreak = 0; /* missed parachute resets streak */
                 set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
             } else {
@@ -1719,12 +2080,12 @@ static void update_game(void) {
                     static const uint16_t bonusScores[5] = { 1000, 2000, 3000, 4000, 5000 };
                     score += bonusScores[paraBonusStreak];
                     check_extra_life();
-                    popupOn = 1; popupX = paraX; popupY = paraY; popupFrame = paraBonusStreak; popupTimer = 45;
+                    popupOn = 1; popupX = paraX; popupY = paraY; popupFrame = paraBonusStreak; popupTimer = T_POPUP;
                     if (paraBonusStreak < 4) paraBonusStreak++;
                     g_hudDirty = 1;
                     audioPlaySource(AUDIO_PICKUP);
                     paraOn = 0;
-                    paraTimer = 540;
+                    paraTimer = T_PARACHUTE;
                     set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
                 }
             }
@@ -1734,17 +2095,23 @@ static void update_game(void) {
         set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
     }
 
-    /* 1940 Bomber formation (Stage 1 only) */
+    /* 1940 Bomber formation (Stage 1 only). New entries stop at the boss gate. */
     if (stage == 1) {
         if (!bomberOn) {
-            if (bomberTimer > 0) {
+            if (enemiesKilled <= ENEMIES_TO_BOSS && bomberTimer > 0) {
                 bomberTimer--;
                 if (bomberTimer == 0) {
                     bomberOn = 1;
                     bomberHealth = 4;
-                    bomberDir = (frameCount & 1) ? 1 : -1;
+                    /* CX16 ai.c aiEndFrame(): the bomber flies in from the side
+                     * the player is heading towards, entering at the height of
+                     * that launch ray +/- up to 2 rows. `frameCount & 1` was
+                     * always 0 here (update_game only runs on even frames), so
+                     * the bomber could only ever enter from the right. */
+                    uint8_t hray = horizontalLaunchRay[facing];
+                    bomberDir = (hray & 16) ? 1 : -1;
                     bomberX = (bomberDir > 0) ? -32 : 224;
-                    bomberY = (int16_t)(35 + ((frameCount * 31) % 90));
+                    bomberY = launchY[hray] + (int16_t)(((aiRandom() & 3) - 2) << 4);
                     bomberBoom = 0;
                     uint8_t bframe = (bomberDir > 0) ? 0 : 4;
                     set_sprite(SPR_BOMBER, PAT_BOMBER + (uint16_t)bframe * 512, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
@@ -1755,10 +2122,10 @@ static void update_game(void) {
                 bomberBoom--;
                 if (bomberBoom == 0) {
                     bomberOn = 0;
-                    bomberTimer = 480;
+                    bomberTimer = T_BOMBER;
                     set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
                 } else {
-                    uint8_t fi = (uint8_t)((bomberBoom * 4) / 16);
+                    uint8_t fi = (uint8_t)(bomberBoom >> 3);
                     if (fi > 3) fi = 3;
                     set_sprite(SPR_BOMBER, PAT_EXPL32 + (uint16_t)fi * 512, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
                 }
@@ -1767,14 +2134,14 @@ static void update_game(void) {
                 bomberY += scrollDy;
                 if (bomberX < -48 || bomberX > 256 || bomberY < -20 || bomberY > 260) {
                     bomberOn = 0;
-                    bomberTimer = 480;
+                    bomberTimer = T_BOMBER;
                     set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
                 } else {
                     uint8_t bframe = (bomberDir > 0) ? (4 - bomberHealth) : (4 + (4 - bomberHealth));
                     set_sprite(SPR_BOMBER, PAT_BOMBER + (uint16_t)bframe * 512, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
-                    /* Bomber drops bomb every 32 frames */
+                    /* CX16 aiHorizontalFlyer: dumb-bullet spray, not era weapons */
                     if (!(frameCount & 31)) {
-                        spawn_ebullet((uint16_t)(bomberX + 16), (uint16_t)(bomberY + 12), 1);
+                        spawn_flyer_shot((uint16_t)(bomberX + 16), (uint16_t)(bomberY + 12));
                     }
                     /* Check player bullets hitting bomber */
                     for (uint8_t bi = 0; bi < NUM_BULLETS; bi++) {
@@ -1786,11 +2153,11 @@ static void update_game(void) {
                                 hide_sprite(SPR_BULLET_BASE + bi);
                                 if (bomberHealth > 0) bomberHealth--;
                                 if (bomberHealth == 0) {
-                                    bomberBoom = 16;
+                                    bomberBoom = T_BOOM32;
                                     score += 1500;
                                     check_extra_life();
                                     g_hudDirty = 1;
-                                    popupOn = 1; popupX = bomberX + 8; popupY = bomberY; popupFrame = POPUP_1500; popupTimer = 45; /* "1500" popup */
+                                    popupOn = 1; popupX = bomberX + 8; popupY = bomberY; popupFrame = POPUP_1500; popupTimer = T_POPUP; /* "1500" popup */
                                     audioPlaySource(AUDIO_BIG_EXPLOSION);
                                 }
                                 break;
@@ -1805,9 +2172,10 @@ static void update_game(void) {
         set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
     }
 
-    /* Score popup float animation */
+    /* CX16 aiScores: popup rides world scroll only, no independent float. */
     if (popupOn) {
-        popupY -= 1;
+        popupX += scrollDx;
+        popupY += scrollDy;
         set_sprite(SPR_POPUP, PAT_NUMBERS + (uint16_t)popupFrame * 256, (uint16_t)popupX, (uint16_t)popupY, 1, 0x50);
         if (--popupTimer == 0) {
             popupOn = 0;
@@ -1825,12 +2193,13 @@ static void update_game(void) {
  * upon entering the stage announce / respawn screen, matching CX16 and arcade flow. */
 static void lose_life(void) {
     if (playerBoom > 0 || playerDeadTimer > 0) return; /* already dead/exploding */
-    playerBoom = 12;        /* ~0.5s explosion */
-    playerDeadTimer = 30;   /* ~1.5s post-mortem world review */
+    playerBoom = T_BOOM32;
+    bulletTimer = 0;                    /* CX16 collidePlayer() */
+    playerDeadTimer = T_PLAYER_DIED - T_BOOM32;   /* post-mortem world review */
     audioPlaySource(AUDIO_BIG_EXPLOSION);
     if (paraOn) {
         paraOn = 0;
-        paraTimer = 540;
+        paraTimer = T_PARACHUTE;
         set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
     }
     if (bomberOn) {
@@ -1942,6 +2311,7 @@ static void init_game(uint8_t players_mode) {
     players[0].enemiesKilled = 0;
     players[0].nextExtraLife = 10000;
     players[0].alive = 1;
+    players[0].stageIntroState = 0;
 
     if (numPlayers == 2) {
         players[1].score = 0;
@@ -1950,6 +2320,7 @@ static void init_game(uint8_t players_mode) {
         players[1].enemiesKilled = 0;
         players[1].nextExtraLife = 10000;
         players[1].alive = 1;
+        players[1].stageIntroState = 0;
     } else {
         players[1].alive = 0;
     }
@@ -1964,28 +2335,38 @@ static void init_game(uint8_t players_mode) {
     nextExtraLife = 10000;
     killMultiplier = 1;
     killTimer = 0;
+    bulletTimer = 0;
     bossOn = 0;
     bossBoom = 0;
+    bossHp = BOSS_HP;
+    bossTimer = T_BOSS;
+    bossRam = 0;
     stageClearTimer = 0;
     stageIntroState = 0;
     announceT = 0;
     playerBoom = 0;
     playerDeadTimer = 0;
-    playerInvuln = 90;  /* 1.5s initial game start invulnerability */
+    lifeFrames = 0;
+    numFollowersMax = 2;                /* CX16 globalsStageInit() */
+    numTrackedMax = 2;
+    numTracked = 0;
+    numRockets = 0;
+    launchSide = 0;
     set_stage_palette();
     for (i = 0; i < NUM_BULLETS; i++) { bulletOn[i] = 0; }
     for (i = 0; i < NUM_EBULLETS; i++) { ebOn[i] = 0; }
     for (i = 0; i < NUM_ENEMIES; i++) {
         enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
         enemyXfrac[i] = 0; enemyYfrac[i] = 0;
+        enemyShot[i] = 0xFF;
     }
     paraOn = 0;
-    paraTimer = 540;
+    paraTimer = T_PARACHUTE;
     paraBonusStreak = 0;
     bomberOn = 0;
     bomberBoom = 0;
-    bomberTimer = 300;
-    waveTimer = 300;
+    bomberTimer = T_BOMBER;
+    waveTimer = 0;
     popupOn = 0;
     popupTimer = 0;
     hide_all_sprites();
@@ -2006,9 +2387,7 @@ static void draw_controls_option(void) {
     draw_text(12, 15, sOptJoystick, (useJoystick == 1) ? 2 : 10);
 }
 
-static void title_screen(void) {
-    if (g_titleDrawn) return;
-    g_titleDrawn = 1;
+static void title_common(void) {
     set_black_palette();        /* Fullscreen arcade black background (matches cx16-1.jpg) */
     /* Show 3D TIME PILOT Logo sprites (y=16, centered) */
     set_sprite(SPR_LOGO_TIME,  PAT_LOGO_TIME,  48,  16, 1, 0x70);
@@ -2023,6 +2402,7 @@ static void title_screen(void) {
     }
     for (uint8_t pi = 0; pi < NUM_PROG_SPR; pi++) set_sprite(SPR_PROG_BASE + pi, PAT_ENEMY, 0, 0, 0, 0);
     /* Common copyright labels (CX16 + Apple II VERA credits). */
+    draw_text(0, 12, sPlay, 7);
     draw_text(19, 7, sKonami, 9);
     draw_text(21, 6, sVersion, 3);
     draw_text(22, 4, sWessels, 3);
@@ -2035,8 +2415,13 @@ static void title_screen(void) {
     draw_text(5, 32, format_score_right(0), 9);
     draw_text(7, 29, "          ", 0);
     draw_text(8, 29, "          ", 0);
+}
+
+static void title_screen(void) {
+    if (g_titleDrawn) return;
+    g_titleDrawn = 1;
+    title_common();
     /* Attract text (CX16 uiShowTitle). */
-    draw_text(0, 12, sPlay, 7);
     draw_text(6, 4, sDeposit, 7);
     draw_text(8, 5, sTryGame, 1);
     draw_text(10, 4, sControlsK, 4);
@@ -2055,20 +2440,27 @@ static void game_over_screen(void) {
     draw_text(17, 10, sGameOver, 1);     /* RED "GAME OVER" (row 17, col 10) */
 }
 
-/* Stage announce (CX16 uiShowPreGameLabels): PLAYER 1 (Row 11) / Plane (Rows 14-15) / A.D. yyyy (Row 17) / STAGE n (Row 21) */
+/* Stage announce (CX16 uiShowPreGameLabels). Era name cycles WHITE/BLUE/RED. */
+static const uint8_t stageLabelColor[3] = { 9, 3, 1 };
 static void stage_announce(void) {
-    if (g_annDrawn) return;
-    g_annDrawn = 1;
-    draw_text(11, 10, (activePlayer == 1) ? sPlayer2 : sPlayer1, 9);     /* Row 11: WHITE PLAYER 1 */
-    if (!stageIntroState) {
-        draw_text(17, 9, eraLabel[stage], 1);                            /* Row 17: RED A.D. yyyy (cleanly below plane) */
-        char stagebuf[8];
-        stagebuf[0] = 'S'; stagebuf[1] = 'T'; stagebuf[2] = 'A';
-        stagebuf[3] = 'G'; stagebuf[4] = 'E'; stagebuf[5] = ' ';
-        stagebuf[6] = (char)('1' + (stage & 0xF)); stagebuf[7] = 0;
-        draw_text(21, 10, stagebuf, 9);                                  /* Row 21: WHITE STAGE n */
-    } else {
-        draw_text(17, 11, sReady, 9);                                    /* Row 17: white READY (cleanly below plane) */
+    static uint8_t introColorOffset;
+    if (!g_annDrawn) {
+        g_annDrawn = 1;
+        introColorOffset = 2;           /* CX16 first colour is RED */
+        draw_text(11, 10, (activePlayer == 1) ? sPlayer2 : sPlayer1, 9);
+        if (stageIntroState) {
+            draw_text(17, 11, sReady, 9);
+        } else {
+            char stagebuf[8];
+            stagebuf[0] = 'S'; stagebuf[1] = 'T'; stagebuf[2] = 'A';
+            stagebuf[3] = 'G'; stagebuf[4] = 'E'; stagebuf[5] = ' ';
+            stagebuf[6] = (char)('1' + (stage & 0xF)); stagebuf[7] = 0;
+            draw_text(21, 10, stagebuf, 9);
+        }
+    }
+    if (!stageIntroState && !(frameCount & 7)) {
+        draw_text(17, 9, eraLabel[stage], stageLabelColor[introColorOffset]);
+        introColorOffset = introColorOffset ? (uint8_t)(introColorOffset - 1) : 2;
     }
 }
 
@@ -2399,7 +2791,7 @@ static void demo_autopilot(void) {
         uint8_t aimDiff = (uint8_t)((targetAngle - facing) & 31);
         if (aimDiff <= 2 || aimDiff >= 30) {
             if (!(frameCount & 3)) {
-                fire_bullet();
+                request_fire();
             }
         }
     } else {
@@ -2408,7 +2800,7 @@ static void demo_autopilot(void) {
             set_sprite_pat(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256);
         }
         if (!(frameCount & 15)) {
-            fire_bullet();
+            request_fire();
         }
     }
 }
@@ -2495,29 +2887,7 @@ int main(void) {
                         title_screen();
                     } else {
                         g_titleDrawn = 1;
-                        set_black_palette();
-                        set_sprite(SPR_LOGO_TIME,  PAT_LOGO_TIME,  48,  16, 1, 0x70);
-                        set_sprite(SPR_LOGO_PILOT, PAT_LOGO_PILOT, 120, 16, 1, 0x70);
-                        set_sprite(SPR_STAGE_BASE, PAT_STAGE_ICON, 312, 128, 1, 0x00);
-                        for (uint8_t si = 1; si < NUM_STAGE_SPR; si++) {
-                            set_sprite(SPR_STAGE_BASE + si, PAT_STAGE_ICON, 0, 0, 0, 0);
-                        }
-                        for (uint8_t li = 0; li < 3; li++) {
-                            set_sprite(SPR_LIFE_BASE + li, PAT_PLAYER + 24 * 256, (uint16_t)(304 - li * 16), 152, 1, 0x50);
-                        }
-                        for (uint8_t pi = 0; pi < NUM_PROG_SPR; pi++) set_sprite(SPR_PROG_BASE + pi, PAT_ENEMY, 0, 0, 0, 0);
-                        draw_text(0, 12, sPlay, 7);
-                        draw_text(19, 7, sKonami, 9);
-                        draw_text(21, 6, sVersion, 3);
-                        draw_text(22, 4, sWessels, 3);
-                        draw_text(24, 2, sIIveraVer, 7);
-                        draw_text(25, 7, sAnomixer, 7);
-                        draw_text(1, 29, sHighScore, 1);
-                        draw_text(2, 32, format_score_right(highScore[0]), 9);
-                        draw_text(4, 35, sOneUp, 1);
-                        draw_text(5, 32, format_score_right(0), 9);
-                        draw_text(7, 29, "          ", 0);
-                        draw_text(8, 29, "          ", 0);
+                        title_common();
                         draw_hs_table();
                     }
                 }
@@ -2591,11 +2961,9 @@ int main(void) {
             {
                 if (announceT == 0) {
                     if (isGameStartIntro && !isDemoMode) {
-                        announceT = 435;   /* ~7.25s: exact full duration of opening theme song */
                         audioPlaySource(AUDIO_GAME_START);
-                    } else {
-                        announceT = 100;   /* ~1.6s brief era announce */
                     }
+                    announceT = stageIntroState ? T_ANN_READY : T_ANN_STAGE;
                     isGameStartIntro = 0;
                     g_hudDirty = 1;
                 }
@@ -2694,10 +3062,10 @@ int main(void) {
                 }
                 if (playerBoom == 0 && playerDeadTimer == 0) {
                     update_player_steering(k, ku);
-                    if (k == ' ' || ku == ' ' || k == '1') fire_bullet();
+                    if (k == ' ' || ku == ' ' || k == '1') request_fire();
                     if (useJoystick && (((*(volatile uint8_t *)0xC061 & 0x80) != 0) ||
                                        ((*(volatile uint8_t *)0xC062 & 0x80) != 0))) {
-                        fire_bullet();
+                        request_fire();
                     }
                 }
             }
