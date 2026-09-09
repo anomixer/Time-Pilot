@@ -29,10 +29,12 @@ load_loop:
         CLC
         ADC #$08
         STA $3C3
+        STX $3C9
         JSR $BF00
         .byte $80               ; READ_BLOCK
         .word $3C0
         BCS hang
+        LDX $3C9
         INX
         CPX $3C8
         BCC load_loop
