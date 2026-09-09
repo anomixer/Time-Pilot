@@ -819,6 +819,7 @@ static const int8_t timeWarpDrawScript[] = {
 static void screen_time_warp(void) {
     int8_t x;
     uint16_t i = 0;
+    uint8_t step = 0;
 
     /* CX16 keeps the current heading; the plane stays pinned at PLAYER_X/Y. */
     set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256,
@@ -876,6 +877,11 @@ static void screen_time_warp(void) {
         audioServiceAudio();
         waitvsync();
         audioServiceAudio();
+
+        /* Truncated TIMEWARP is 1.20s = 72 vsyncs. Beam is 22*4, wipe ~56.
+         * Start after step 18 so the whoosh ends as AUDIO_NEXT_LEVEL hits. */
+        if (++step == 18)
+            audioPlaySource(AUDIO_TIMEWARP);
 
         i++;
         x = timeWarpDrawScript[i];
@@ -1934,12 +1940,11 @@ static void update_game(void) {
         }
     }
 
-    /* 3s hold (CX16 PLAYER_DIED_TIMER), TIMEWARP at 1s, then the beam.
+    /* 3s hold (CX16 PLAYER_DIED_TIMER), then the beam.
+     * TIMEWARP (1.20s PCM) starts late in the beam so it ends at landing.
      * Clouds stay; heading is current (CX16 screenTimeWarp). */
     if (stageClearTimer > 0) {
         stageClearTimer--;
-        if (stageClearTimer == T_PLAYER_DIED - TICKS(60))
-            audioPlaySource(AUDIO_TIMEWARP);
         if (stageClearTimer == 0) {
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
