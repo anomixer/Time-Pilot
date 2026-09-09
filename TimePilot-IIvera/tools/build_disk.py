@@ -215,6 +215,10 @@ def main():
         sys_raw = f.read()
     if sys_raw[:4] == b"\x7fELF":
         raise SystemExit("error: tpilot.sys looks like an ELF, not a ProDOS SYS image")
+    # mos-apple2-clang emits a 4-byte ProDOS BIN header ($2000 + length).
+    # ProDOS SYS (file type $FF) files are loaded directly at $2000 without a header.
+    if len(sys_raw) >= 4 and (sys_raw[0] | (sys_raw[1] << 8)) == 0x2000:
+        sys_raw = sys_raw[4:]
     with open(main_path, "rb") as f:
         main_load_addr, main_bin = split_bin(f.read())
     with open(main4_path, "rb") as f:

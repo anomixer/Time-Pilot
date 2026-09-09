@@ -180,6 +180,10 @@ def main():
     # llvm-mos may write a sibling .elf; the -o path is the raw SYS image.
     if sys_raw[:4] == b"\x7fELF":
         raise SystemExit("error: tpilot.sys looks like an ELF, not a ProDOS SYS image")
+    # mos-apple2-clang emits a 4-byte ProDOS BIN header ($2000 + length).
+    # ProDOS SYS (file type $FF) files are loaded directly at $2000 without a header.
+    if len(sys_raw) >= 4 and (sys_raw[0] | (sys_raw[1] << 8)) == 0x2000:
+        sys_raw = sys_raw[4:]
 
     f_sys = write_file(disk, alloc, "TPILOT.SYSTEM", 0xFF, 0x2000, sys_raw)
     f_main = write_file(disk, alloc, "MAIN.BIN", 0x06, main_load_addr, main_bin)
