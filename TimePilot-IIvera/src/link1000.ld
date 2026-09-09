@@ -3,9 +3,10 @@
  * TPILOT.SYSTEM (not BASIC.SYSTEM/BRUN) loads this image at $0800 and jumps
  * there. BASIC.SYSTEM is not resident, so the old $9600 HIMEM ceiling is gone.
  *
- * $0800-$B7FF is the load image (45,056 bytes). The C stack grows down from
- * $BE00; $B800-$BDFF is reserved for it. $BF00-$BFFF is the ProDOS global
- * page and must not be overwritten.
+ * $0800-$B7FF is the load image (45,056 bytes). $B800-$B9FF is the MLI
+ * READ_BLOCK window (diskBuf). The C stack grows down from $BE00 through
+ * $BA00-$BDFF (1 KB before it hits the disk window). $BF00-$BFFF is the
+ * ProDOS global page and must not be overwritten.
  *
  * Entry point must equal the load address ($0800).
  */

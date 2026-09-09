@@ -172,7 +172,8 @@ add_custom_command(
     VERBATIM)
 
 # Game image is loaded at $0800 by TPILOT.SYSTEM. Must stay below $B800 so the
-# C stack ($BE00) and ProDOS global page ($BF00) remain intact.
+# MLI disk window ($B800), C stack ($BE00) and ProDOS global page ($BF00)
+# remain intact.
 option(TPV_STRICT_SIZE "Fail the build when a binary crosses the $B800 ceiling" OFF)
 set(_size_args "")
 if(TPV_STRICT_SIZE)

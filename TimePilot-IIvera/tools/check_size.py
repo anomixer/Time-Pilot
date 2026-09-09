@@ -2,8 +2,9 @@
 """check_size.py - Verify a ProDOS BIN fits under the memory ceiling.
 
 TPILOT.SYSTEM loads the game at $0800. BASIC.SYSTEM is not resident, so the
-old $9600 HIMEM ceiling does not apply. The load image must still stay below
-the C stack ($BE00) and the ProDOS global page ($BF00). The linker ram region
+old $9600 HIMEM ceiling does not apply. The load image must stay below $B800
+(the 512-byte MLI disk window). The C stack grows down from $BE00 through
+$BA00-$BDFF; $BF00-$BFFF is the ProDOS global page. The linker ram region
 ends at $B800; this check uses that as the ceiling.
 
 Code size varies with the llvm-mos version, so a binary that fit for one SDK
@@ -46,7 +47,7 @@ def main():
 
     if worst > 0:
         msg = (f"binary exceeds the ${args.ceiling:04X} ceiling by {worst} bytes "
-               f"- it will collide with the C stack / ProDOS global page")
+               f"- it will collide with the MLI disk window at $B800")
         if args.strict:
             print(f"error: {msg}", file=sys.stderr)
             return 1

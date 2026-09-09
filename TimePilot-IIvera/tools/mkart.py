@@ -2,9 +2,8 @@
 """mkart.py - Extract all sprite art from src/art.h into art.blob and emit
 src/art_table.h with byte offsets.
 
-This keeps the ~17KB of art out of the binary (which caused "NO BUFFERS
-AVAILABLE" on BRUN) and puts it on the disk image for MLI streaming into VERA
-pattern RAM at boot (the CX16 .vrm model).
+This keeps the ~17KB of art out of the load image and puts it on the disk
+image for MLI streaming into VERA pattern RAM at boot (the CX16 .vrm model).
 
 Ported from the original mkart.mjs.
 """

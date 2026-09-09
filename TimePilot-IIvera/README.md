@@ -49,7 +49,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 | **Host System** | Commander X16 Retro PC | Apple IIgs (16-bit, 1986) | **Enhanced Apple IIe / IIgs / Laser 128**<br>(Requires a 65C02 and 64KB RAM. Apple II+ and non-enhanced IIe are 6502 machines and are **not** supported; the Apple IIc has a 65C02 but no expansion slot for the VERA card.) |
 | **CPU** | WDC 65C02S (8-bit) | WDC 65C816 (16-bit) | **WDC 65C02 required (Pure 8-bit challenge)** |
 | **Clock Speed** | **8.0 MHz** (High computational budget) | **2.8 MHz** (16-bit instruction set) | **1.02 MHz** (1/8th of CX16 clock speed) |
-| **Host RAM** | 512 KB ~ 2 MB Banked RAM | 1.25 MB ~ 8 MB Fast RAM | **64 KB ~ 128 KB Host RAM**<br>(Game core binary fits strictly under 33 KB, `$1400..$91BF`) |
+| **Host RAM** | 512 KB ~ 2 MB Banked RAM | 1.25 MB ~ 8 MB Fast RAM | **64 KB ~ 128 KB Host RAM**<br>(Game image loads at `$0800`, ceiling `$B800` / 45 KB; current build ~33 KB) |
 | **Video Chip** | VERA FPGA (Onboard) | Apple IIgs VGC (Video Graphics Controller) | **VERA FPGA Interface Card (Slot 2 or Slot 4)** |
 | **Video Memory** | 128 KB VRAM | 32 KB Video RAM (Mirrored) | **128 KB Dual-Bank VRAM** (Card dedicated, 0 host RAM overhead) |
 | **Resolution** | 320 × 240 @ 60Hz | 320 × 200 @ 60Hz (Super Hi-Res) | **320 × 240 @ 60Hz** (Full 1:1 arcade aspect ratio) |
@@ -200,26 +200,34 @@ cmake --build build
 
 Build pipeline:
 1. `tools/mkart.py`: packs the sprite art in `src/art.h` into `art.blob` and regenerates `src/art_table.h`.
-2. `mos-apple2e-clang`: compiles `MAIN.BIN` (Slot 2, `VERA_BASE=0xC200`) and `MAIN4.BIN` (Slot 4, `VERA_BASE=0xC400`) with `-Oz`.
-3. `tools/build_hdv.py`: packages the 800 KB ProDOS bootable image `disks/TimePilot-IIvera.hdv` (using authentic 4-voice PSG hardware synthesis for the opening theme, saving 45KB of VRAM and 89 disk blocks).
-4. `tools/build_disk.py`: packages the dual 140 KB 5.25" floppies `disks/TimePilot-IIvera-D1.po` (Boot + Slot 2 Binary + Art) and `disks/TimePilot-IIvera-D2.po` (PCM Audio + Slot 4 Binary).
+2. `mos-apple2e-clang`: compiles `MAIN.BIN` (Slot 2, `VERA_BASE=0xC200`), `MAIN4.BIN` (Slot 4, `VERA_BASE=0xC400`), and `TPILOT.SYSTEM` (ProDOS SYS loader) with `-Oz`.
+3. `tools/check_size.py`: verifies the game image stays below `$B800`.
+4. `tools/build_hdv.py`: packages the 800 KB ProDOS bootable image `disks/TimePilot-IIvera.hdv` (using authentic 4-voice PSG hardware synthesis for the opening theme, saving 45KB of VRAM and 89 disk blocks).
+5. `tools/build_disk.py`: packages the dual 140 KB 5.25" floppies `disks/TimePilot-IIvera-D1.po` (Boot + Slot 2 Binary + Art) and `disks/TimePilot-IIvera-D2.po` (PCM Audio + Slot 4 Binary).
 
 Disk images land in `disks/` and are not committed — rebuild them from a clean clone at any time.
 
 ### Memory ceiling check
-The game is BRUN at `$1400` and must stay below BASIC.SYSTEM's buffers at `$9600`. `link1000.ld`
-sizes the `ram` region up to `$9C00`, so a link can succeed with a binary that would corrupt
-BASIC.SYSTEM at run time. Every build therefore runs `tools/check_size.py` and reports the range:
+`TPILOT.SYSTEM` (not BASIC.SYSTEM / BRUN) loads the game at `$0800`. BASIC.SYSTEM is not
+resident, so the old `$9600` HIMEM ceiling is gone. The load image must stay below `$B800`:
+
+| region | use |
+| --- | --- |
+| `$0800–$B7FF` | game load image (45,056 bytes max) |
+| `$B800–$B9FF` | 512-byte MLI disk window (`diskBuf`) |
+| `$BA00–$BDFF` | C stack, growing down from `$BE00` |
+| `$BF00–$BFFF` | ProDOS global page |
+
+Every build runs `tools/check_size.py` and reports the range:
 
 ```
-main.bin      32190 bytes  $1400..$91BE  ceiling $9600  headroom  1090  [OK]
+main.bin      33066 bytes  $0800..$892A  ceiling $B800  headroom 11990  [OK]
 ```
 
-**Generated code size depends on the llvm-mos version.** A newer SDK can push the binary past the
-ceiling with no source change — llvm-mos `clang 24.0.0git` produces roughly 1.25 KB more than the
-toolchain the port was originally built with, which is enough to overflow. If you see `[OVER]`,
-the images will build but are not safe to run; use an older SDK or reduce code size. Configure with
-`-DTPV_STRICT_SIZE=ON` to make an overflow a hard build failure.
+**Generated code size depends on the llvm-mos version.** A newer SDK can grow the binary with no
+source change. If you see `[OVER]`, the images will build but are not safe to run — the payload
+would collide with the MLI window. Configure with `-DTPV_STRICT_SIZE=ON` to make an overflow a
+hard build failure.
 
 ### Editor support
 Configuring writes `compile_flags.txt` with the include paths resolved for *your* machine, so
@@ -228,7 +236,7 @@ clangd works without hand-editing. It is git-ignored precisely because it holds 
 ### Project layout
 | Path | Contents |
 | --- | --- |
-| `src/` | C and 6502 sources, headers, Applesoft launchers |
+| `src/` | C and 6502 sources, headers, `TPILOT.SYSTEM` loader (`loader.c` / `loader.s`) |
 | `assets/` | ProDOS templates (`800kb.hdv`, `140kb.po`) and the converted `pcm.blob` |
 | `tools/` | Build-time tools, driven by CMake |
 | `tools/offline/` | One-time asset conversions, run by hand — never during a build |
@@ -248,6 +256,7 @@ that are not in this repository, which is exactly why their outputs are committe
 | `make_font.py` | `src/font8x8.h` | Needs the CX16 font PNG |
 
 ### Running in Emulator or Real Hardware
+Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot detect + splash on text page 1) → `MAIN.BIN` / `MAIN4.BIN` at `$0800`.
 * **800KB Hard Disk Mode**: Load `TimePilot-IIvera.hdv` into **Apple2TS** or any Apple II emulator/storage controller (CFFA3000, FujiNet, wDrive).
 * **Dual 140KB 5.25" Floppy Mode**: Mount `TimePilot-IIvera-D1.po` into Drive 1 and `TimePilot-IIvera-D2.po` into Drive 2; boot Drive 1. The game auto-detects floppy mode, streams art from Drive 1 and audio from Drive 2 seamlessly!
 
@@ -294,7 +303,7 @@ that are not in this repository, which is exactly why their outputs are committe
 | **主機平台** | Commander X16 現代復古電腦 | Apple IIgs (1986) 16 位元個人電腦 | **增強型 Apple IIe / IIgs / Laser 128**<br>(需 65C02 處理器與 64KB RAM。Apple II+ 與非增強型 IIe 為 6502 機種，**不支援**；Apple IIc 雖為 65C02，但無擴充槽可安裝 VERA 卡。) |
 | **CPU 處理器** | WDC 65C02S (8-bit) | WDC 65C816 (16-bit) | **需 WDC 65C02 (純 8-bit 極限挑戰)** |
 | **運作時脈** | **8.0 MHz** (算力極度充裕) | **2.8 MHz** (16 位元指令集) | **1.02 MHz** (算力僅 CX16 的 1/8) |
-| **主機 RAM 記憶體** | 512 KB ~ 2 MB (Banked RAM) | 1.25 MB ~ 8 MB Fast RAM | **主機僅 64 KB ~ 128 KB**<br>程式碼嚴格壓在 33 KB (`$1400..$91BF`) |
+| **主機 RAM 記憶體** | 512 KB ~ 2 MB (Banked RAM) | 1.25 MB ~ 8 MB Fast RAM | **主機僅 64 KB ~ 128 KB**<br>遊戲映像載入於 `$0800`，上限 `$B800`（45 KB）；目前約 33 KB |
 | **圖形顯示晶片** | VERA FPGA (主機板內建) | Apple IIgs VGC (Video Graphics Controller) | **VERA FPGA 介面卡 (外接於 Slot 2 或 Slot 4)** |
 | **獨立視訊記憶體** | 128 KB VRAM | 32 KB Video RAM (映照於 Fast RAM) | **128 KB VRAM** (擴充卡專屬，不耗主機 RAM) |
 | **原生解析度** | 320 × 240 @ 60Hz | 320 × 200 @ 60Hz (Super Hi-Res) | **320 × 240 @ 60Hz** (全畫面 1:1 滿版輸出) |
@@ -452,24 +461,32 @@ cmake --build build
 
 建置流程：
 1. `tools/mkart.py`：將 `src/art.h` 的精靈圖檔打包為 `art.blob`，並重新產生 `src/art_table.h`。
-2. `mos-apple2e-clang`：以 `-Oz` 極限優化編譯 `MAIN.BIN`（Slot 2，`VERA_BASE=0xC200`）與 `MAIN4.BIN`（Slot 4，`VERA_BASE=0xC400`）。
-3. `tools/build_hdv.py`：生成 800 KB ProDOS 開機硬碟映像檔 `disks/TimePilot-IIvera.hdv`（採用 4 聲道硬體 PSG 即時演奏遊戲開頭音樂，節省 45KB VRAM 與 89 個磁區空間）。
-4. `tools/build_disk.py`：生成兩張 140 KB 5.25" 軟碟 `disks/TimePilot-IIvera-D1.po`（開機引導 + Slot 2 主程式 + 圖形）與 `disks/TimePilot-IIvera-D2.po`（PCM 音效庫 + Slot 4 主程式）。
+2. `mos-apple2e-clang`：以 `-Oz` 極限優化編譯 `MAIN.BIN`（Slot 2，`VERA_BASE=0xC200`）、`MAIN4.BIN`（Slot 4，`VERA_BASE=0xC400`）與 `TPILOT.SYSTEM`（ProDOS SYS 載入程式）。
+3. `tools/check_size.py`：確認遊戲映像未超過 `$B800`。
+4. `tools/build_hdv.py`：生成 800 KB ProDOS 開機硬碟映像檔 `disks/TimePilot-IIvera.hdv`（採用 4 聲道硬體 PSG 即時演奏遊戲開頭音樂，節省 45KB VRAM 與 89 個磁區空間）。
+5. `tools/build_disk.py`：生成兩張 140 KB 5.25" 軟碟 `disks/TimePilot-IIvera-D1.po`（開機引導 + Slot 2 主程式 + 圖形）與 `disks/TimePilot-IIvera-D2.po`（PCM 音效庫 + Slot 4 主程式）。
 
 磁碟映像檔輸出至 `disks/`，不納入版本控制；隨時皆可從乾淨的 clone 重新建置。
 
 ### 記憶體上限檢查
-遊戲由 `$1400` 開始 BRUN，必須停留在 BASIC.SYSTEM 緩衝區 `$9600` 以下。但 `link1000.ld` 的 `ram`
-區段可延伸至 `$9C00`，因此即使產出的執行檔會在執行期覆寫 BASIC.SYSTEM，連結仍可能成功。
-故每次建置皆會執行 `tools/check_size.py` 並回報位址範圍：
+由 `TPILOT.SYSTEM`（而非 BASIC.SYSTEM / BRUN）將遊戲載入至 `$0800`。BASIC.SYSTEM 不再常駐，
+舊的 `$9600` HIMEM 上限已取消。載入映像必須停在 `$B800` 以下：
+
+| 區段 | 用途 |
+| --- | --- |
+| `$0800–$B7FF` | 遊戲載入映像（最大 45,056 位元組） |
+| `$B800–$B9FF` | 512 位元組 MLI 磁碟視窗（`diskBuf`） |
+| `$BA00–$BDFF` | C 堆疊，由 `$BE00` 向下成長 |
+| `$BF00–$BFFF` | ProDOS global page |
+
+每次建置皆執行 `tools/check_size.py` 並回報位址範圍：
 
 ```
-main.bin      32190 bytes  $1400..$91BE  ceiling $9600  headroom  1090  [OK]
+main.bin      33066 bytes  $0800..$892A  ceiling $B800  headroom 11990  [OK]
 ```
 
-**產生的程式碼大小會隨 llvm-mos 版本而異。** 即使原始碼完全未修改，較新的 SDK 仍可能使執行檔超出上限——
-llvm-mos `clang 24.0.0git` 產生的程式碼比本移植版原始使用的工具鏈約多 1.25 KB，足以造成溢位。
-若看到 `[OVER]`，映像檔雖可建置但無法安全執行；請改用較舊的 SDK 或設法縮減程式碼。
+**產生的程式碼大小會隨 llvm-mos 版本而異。** 即使原始碼完全未修改，較新的 SDK 仍可能使執行檔變大。
+若看到 `[OVER]`，映像檔雖可建置但無法安全執行——會與 MLI 視窗碰撞。
 設定時加上 `-DTPV_STRICT_SIZE=ON` 可讓溢位直接中斷建置。
 
 ### 編輯器支援
@@ -479,7 +496,7 @@ clangd 無需手動修改即可運作。該檔案含有絕對路徑，因此已�
 ### 專案目錄結構
 | 路徑 | 內容 |
 | --- | --- |
-| `src/` | C 與 6502 原始碼、標頭檔、Applesoft 啟動程式 |
+| `src/` | C 與 6502 原始碼、標頭檔、`TPILOT.SYSTEM` 載入程式（`loader.c` / `loader.s`） |
 | `assets/` | ProDOS 範本映像（`800kb.hdv`、`140kb.po`）與轉換完成的 `pcm.blob` |
 | `tools/` | 建置時工具，由 CMake 呼叫 |
 | `tools/offline/` | 一次性資產轉換工具，手動執行，建置時絕不會被呼叫 |
@@ -499,5 +516,6 @@ clangd 無需手動修改即可運作。該檔案含有絕對路徑，因此已�
 | `make_font.py` | `src/font8x8.h` | 需要 CX16 的字型 PNG |
 
 ### 模擬器或實機載入執行
+開機鏈：ProDOS →（HDV：`CLOCK.SYSTEM`）→ `TPILOT.SYSTEM`（偵測 VERA 槽位並在 text page 1 顯示啟動畫面）→ 於 `$0800` 載入 `MAIN.BIN` / `MAIN4.BIN`。
 * **800KB 硬碟模式**：支援 **Apple2TS** 網頁模擬器或任何支援 VERA 擴充卡之 Apple II 模擬器／實機儲存卡（CFFA3000、FujiNet、wDrive），將 `TimePilot-IIvera.hdv` 掛載至硬碟槽即可自動引導開機啟動！
 * **雙 140KB 5.25" 軟碟模式**：將 `TimePilot-IIvera-D1.po` 掛載至 Drive 1，`TimePilot-IIvera-D2.po` 掛載至 Drive 2，自 Drive 1 開機。程式自動識別軟碟容量，圖形自 D1 讀取、音效自 D2 載入，完美相容雙軟碟機配置！
