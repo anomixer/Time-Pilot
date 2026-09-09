@@ -879,8 +879,9 @@ static void screen_time_warp(void) {
         audioServiceAudio();
 
         /* Truncated TIMEWARP is 1.20s = 72 vsyncs. Beam is 22*4, wipe ~56.
-         * Start after step 18 so the whoosh ends as AUDIO_NEXT_LEVEL hits. */
-        if (++step == 18)
+         * Start after step 14 (~1/4s earlier than landing-exact) so a short
+         * gap sits before AUDIO_NEXT_LEVEL. */
+        if (++step == 14)
             audioPlaySource(AUDIO_TIMEWARP);
 
         i++;
