@@ -8,6 +8,7 @@ Video of Windows/Linux/macOS and Commander X16 versions on YouTube: https://yout
 [Windows/Linux/macOS](TimePilot-16bit-C/README.md)  
 [Commander X16 Readme](TimePilot-CX16/README.md)  
 [Mac 68K Readme](TimePilot-Mac68k/README.md)  
+[Apple //e & IIgs Vera Readme - port by anomixer](TimePilot-IIvera/README.md)  
   
 ## About Time Pilot from Wikipedia:  
 Time Pilot is a multidirectional shooter arcade video game designed by Yoshiki Okamoto and released by Konami in 1982. While engaging in aerial combat, the player-controlled jet flies across open airspace that scrolls indefinitely in all directions.  
