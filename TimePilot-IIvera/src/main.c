@@ -157,6 +157,7 @@ static const uint8_t enemyHitH[5] = { 16, 16, 9, 16, 8 };
  * (224..320px) hold the arcade status bar (CX16 LAYER_SCORES). Player pinned at
  * the playfield center (CX16 PLAYER_X=104, PLAYER_Y=112). All bounds below use these. */
 #define PF_W            224       /* playfield width (px) */
+#define PF_H            240       /* CX16 PLAYFIELDH*8 */
 #define PF_XMIN         8         /* left sprite bound */
 #define PF_XMAX         216       /* rightmost 16px-sprite origin (224-8) */
 #define PF_YMIN         8
@@ -193,6 +194,7 @@ static const uint8_t enemyHitH[5] = { 16, 16, 9, 16, 8 };
 #define T_WAVE_ENTRY    7           /* CX16 ENEMY_WAVE_ENTRY_TIMER  60/8      */
 #define T_RECALL        TICKS(576)  /* CX16 ENEMY_RECALL_TIMER (32*18)        */
 #define T_BOSS          TICKS(120)  /* CX16 LEVELBOSS_TIMER (2 s)             */
+#define T_EB_OFFSCREEN  TICKS(48)   /* CX16 ACTIVEOFFSCREEN_COUNT $30         */
 #define T_ANN_STAGE     300         /* CX16 STAGE_ANNOUNCE_TIMER 5s (vsync)   */
 #define T_ANN_READY     180         /* CX16 PLAYER_ANNOUNCE_TIMER 3s (vsync)  */
 #define NUM_STAGES      5          /* 1910 / 1940 / 1970 / 1982 / 2001 (CX16 order) */
@@ -326,6 +328,7 @@ static uint8_t  ebHead[NUM_EBULLETS];          /* CX16 activeHeading[] / bomb sw
 static uint8_t  ebOn[NUM_EBULLETS];
 static uint8_t  ebKind[NUM_EBULLETS];          /* kind | EB_TRACKED | EB_RIGHT */
 static uint8_t  ebOwner[NUM_EBULLETS];         /* enemy index, or >=NUM_ENEMIES if flyer/orphan */
+static uint8_t  ebOffscreen[NUM_EBULLETS];     /* CX16 activeOffScreen[] for bombs/rockets/boomers */
 static uint8_t  enemyShot[NUM_ENEMIES];        /* 0xFF free, else ebullet slot (CX16 enemyWeapon[]) */
 static uint8_t  numTracked, numTrackedMax, numRockets, launchSide;
 static int16_t  enemyX[NUM_ENEMIES], enemyY[NUM_ENEMIES];
@@ -627,6 +630,7 @@ static void waitvsync(void) {
     VERA.irq_flags = VERA_IRQ_VSYNC;                   /* acknowledge/clear flag for next frame */
 }
 static void hide_sprite(uint8_t n);
+static void show_sprite(uint8_t n);
 
 /* Counter-clockwise circular radar screen wipe (matches CX16 screenWipe) */
 static void screen_draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint8_t color) {
@@ -768,6 +772,12 @@ static void hide_sprite(uint8_t n) {
     uint16_t base = SPRITE_ATTR + (uint16_t)n * 8 + 6;
     vera_set_addr(VERA_INC_BANK1, base);
     VERA.data0 = 0x00;                         // z-depth = 0: disabled/hidden
+}
+
+static void show_sprite(uint8_t n) {
+    uint16_t base = SPRITE_ATTR + (uint16_t)n * 8 + 6;
+    vera_set_addr(VERA_INC_BANK1, base);
+    VERA.data0 = (n >= SPR_LIFE_BASE) ? 0x0C : 0x04;
 }
 
 static void move_sprite(uint8_t n, uint16_t x, uint16_t y) {
@@ -1228,9 +1238,7 @@ static void kill_eb(uint8_t i, uint8_t scored) {
     hide_sprite(SPR_EBULLET_BASE + i);
     if (o < NUM_ENEMIES && enemyShot[o] == i) enemyShot[o] = 0xFF;
     if ((ebKind[i] & EB_TRACKED) && numTracked) numTracked--;
-    if (k == EB_ROCKET && numRockets && !(--numRockets)) {
-        audioStopSource(AUDIO_ROCKET_FLY);
-    }
+    if (k == EB_ROCKET && numRockets) numRockets--;
     if (scored) {
         add_chain_score();
         if (k == EB_BOMB || k == EB_ROCKET) audioPlaySource(AUDIO_WAPON_EXPLODE);
@@ -1247,10 +1255,7 @@ static void clear_ebullets(void) {
     }
     for (i = 0; i < NUM_ENEMIES; i++) enemyShot[i] = 0xFF;
     numTracked = 0;
-    if (numRockets) {
-        numRockets = 0;
-        audioStopSource(AUDIO_ROCKET_FLY);
-    }
+    numRockets = 0;
 }
 
 /* CX16 aiEnemy / aiHorizontalFlyer: shot along heading at VELOCITY_200
@@ -1263,6 +1268,7 @@ static uint8_t spawn_eb(uint16_t x, uint16_t y, uint8_t heading,
         if (ebOn[i]) continue;
         ebOn[i] = 1;
         ebX[i] = x; ebY[i] = y;
+        ebOffscreen[i] = 0;
         ebHead[i] = heading;
         ebKind[i] = (uint8_t)(kind | flags);
         ebOwner[i] = owner;
@@ -1277,7 +1283,6 @@ static uint8_t spawn_eb(uint16_t x, uint16_t y, uint8_t heading,
         case EB_ROCKET:
             pat = PAT_ROCKET + (uint16_t)(((heading - 8) & 31) >> 1) * SPR_BYTES_16;
             audioPlaySource(AUDIO_ROCKET_LAUNCH);
-            audioPlaySource(AUDIO_ROCKET_FLY);
             numRockets++;
             break;
         case EB_BOOMER:
@@ -1370,7 +1375,6 @@ static void boss_explode(void) {
     bossBoom = T_BOOM32;
     set_sprite(SPR_BOSS, PAT_EXPL32, (uint16_t)bossX, (uint16_t)bossY, 1, 0x60);
     audioStopSource(stageBossAudio());
-    audioStopSource(AUDIO_ROCKET_FLY);
     audioPlaySource(AUDIO_BIG_EXPLOSION);
     bulletTimer = 0;
     for (k = 0; k < NUM_ENEMIES; k++) {
@@ -1754,11 +1758,32 @@ static void update_game(void) {
             }
             bx = (int16_t)ebX[i] + (int16_t)((velDx[h] * hs) / 2) + scrollDx;
             by = (int16_t)ebY[i] + (int16_t)((velDy[h] * hs) / 2) + scrollDy;
-            if (bx < PF_XMIN || bx > PF_XMAX || by < PF_YMIN || by > PF_YMAX) {
-                kill_eb(i, 0);
-            } else {
-                ebX[i] = (uint16_t)bx; ebY[i] = (uint16_t)by;
-                move_sprite(SPR_EBULLET_BASE + i, (uint16_t)bx, (uint16_t)by);
+            /* CX16 screenClips CLIPMASK: sprite fully past the 224x240 playfield.
+             * Bombs/rockets/boomerangs then wait ACTIVEOFFSCREEN_COUNT ($30 at
+             * 60 Hz = T_EB_OFFSCREEN here) so enemyShot/numTracked stay taken.
+             * Dumb bullets/space die immediately once fully off, like CX16. */
+            {
+                uint8_t spr = (k == EB_ROCKET) ? 16 : 8;
+                uint8_t fully_off = (uint8_t)(
+                    (bx + (int16_t)spr <= 0) || (bx >= (int16_t)PF_W) ||
+                    (by + (int16_t)spr <= 0) || (by >= (int16_t)PF_H));
+                ebX[i] = (uint16_t)bx;
+                ebY[i] = (uint16_t)by;
+                if (fully_off) {
+                    hide_sprite(SPR_EBULLET_BASE + i);
+                    if (k == EB_BOMB || k == EB_ROCKET || k == EB_BOOMER) {
+                        if (++ebOffscreen[i] >= T_EB_OFFSCREEN)
+                            kill_eb(i, 0);
+                    } else {
+                        kill_eb(i, 0);
+                    }
+                } else {
+                    if (ebOffscreen[i]) {
+                        show_sprite(SPR_EBULLET_BASE + i);
+                        ebOffscreen[i] = 0;
+                    }
+                    move_sprite(SPR_EBULLET_BASE + i, (uint16_t)bx, (uint16_t)by);
+                }
             }
         }
     }
@@ -3203,14 +3228,8 @@ int main(void) {
                     g_hudDirty = 1;
                     audioPlaySource(AUDIO_PICKUP);
                 }
-                if (ku == 'K') {
-                    useJoystick = 0;
-                    audioPlaySource(AUDIO_PICKUP);
-                }
-                if (ku == 'J') {
-                    useJoystick = 1;
-                    audioPlaySource(AUDIO_PICKUP);
-                }
+                if (ku == 'K') useJoystick = 0;
+                if (ku == 'J') useJoystick = 1;
                 if (playerBoom == 0 && playerDeadTimer == 0 && stageClearTimer == 0) {
                     update_player_steering(k, ku);
                     if (k == ' ' || ku == ' ' || k == '1') request_fire();
