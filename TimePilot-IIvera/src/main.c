@@ -2168,7 +2168,8 @@ static void update_game(void) {
                 set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
             } else {
                 move_sprite(SPR_PARACHUTE, (uint16_t)paraX, (uint16_t)paraY);
-                if (paraX + 14 > (int16_t)playerX && paraX < (int16_t)playerX + 14 &&
+                if (playerBoom == 0 && playerDeadTimer == 0 &&
+                    paraX + 14 > (int16_t)playerX && paraX < (int16_t)playerX + 14 &&
                     paraY + 14 > (int16_t)playerY && paraY < (int16_t)playerY + 14) {
                     static const uint16_t bonusScores[5] = { 1000, 2000, 3000, 4000, 5000 };
                     score += bonusScores[paraBonusStreak];
@@ -2300,6 +2301,8 @@ static void lose_life(void) {
     bulletTimer = 0;                    /* CX16 collidePlayer() */
     playerDeadTimer = T_PLAYER_DIED - T_BOOM32;   /* post-mortem world review */
     audioPlaySource(AUDIO_BIG_EXPLOSION);
+    /* Next chute is 1000. Miss also resets; only consecutive catches climb. */
+    paraBonusStreak = 0;
     /* CX16 leaves chute/bomber in the world for the 3s death hold;
      * gameStageInit wipes them at READY. Do not hide here. */
 }
@@ -2398,6 +2401,7 @@ static void arm_chute_bomber_timers(uint8_t ready) {
     uint16_t extra = ready ? TICKS(180) : TICKS(300);
     paraTimer = T_PARACHUTE + extra;
     bomberTimer = T_BOMBER + extra;
+    paraBonusStreak = 0;        /* death / new era: next catch is 1000 */
 }
 
 static void init_game(uint8_t players_mode) {
