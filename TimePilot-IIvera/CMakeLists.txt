@@ -129,13 +129,11 @@ add_custom_command(
 set(MOS_LTO_ZP 157 CACHE STRING
     "Zero-page bytes available to the compiler; must match zp LENGTH in link1000.ld")
 
-# Target the 65C02, not the base 6502. The denser 65C02 encoding saves ~1,590
-# bytes, which is what keeps the binary under the $9600 ceiling on current
-# llvm-mos; a 6502 build overflows it by ~160 bytes. This restricts the game to
-# 65C02 hosts: Enhanced Apple IIe, IIgs and Laser 128. Apple II+ and the
-# original non-enhanced IIe are 6502 machines and are NOT supported.
+# Target the 65C02, not the base 6502. This restricts the game to 65C02 hosts:
+# Enhanced Apple IIe, IIgs and Laser 128. Apple II+ and the original
+# non-enhanced IIe are 6502 machines and are NOT supported.
 set(MOS_CPU "mos65c02" CACHE STRING
-    "Target CPU. mos65c02 is required to fit under $9600; mos6502 currently overflows.")
+    "Target CPU. mos65c02 (Enhanced IIe / IIgs / Laser 128).")
 message(STATUS "target cpu   : ${MOS_CPU}")
 
 function(add_mos_binary out_name vera_base)
@@ -159,11 +157,23 @@ endfunction()
 add_mos_binary(main.bin  0xC200)
 add_mos_binary(main4.bin 0xC400)
 
-# The game BRUNs at $1400 and must stay below BASIC.SYSTEM's buffers at $9600.
-# link1000.ld allows ram up to $9C00, so the link succeeds past the point where
-# the running game would corrupt BASIC.SYSTEM. Code size moves with the llvm-mos
-# version, so check it on every build.
-option(TPV_STRICT_SIZE "Fail the build when a binary crosses the $9600 ceiling" OFF)
+# TPILOT.SYSTEM — ProDOS SYS loader (stock apple2 link at $2000, no BIN header).
+add_custom_command(
+    OUTPUT "${STAGE_DIR}/tpilot.sys"
+    COMMAND "${MOS_CLANG}"
+            -Oz
+            -mcpu=${MOS_CPU}
+            -o "${STAGE_DIR}/tpilot.sys"
+            "${SRC_DIR}/loader.c"
+            "${SRC_DIR}/loader.s"
+            "${SRC_DIR}/mli.s"
+    DEPENDS "${SRC_DIR}/loader.c" "${SRC_DIR}/loader.s" "${SRC_DIR}/mli.s"
+    COMMENT "Compiling tpilot.sys (ProDOS SYS loader)"
+    VERBATIM)
+
+# Game image is loaded at $0800 by TPILOT.SYSTEM. Must stay below $B800 so the
+# C stack ($BE00) and ProDOS global page ($BF00) remain intact.
+option(TPV_STRICT_SIZE "Fail the build when a binary crosses the $B800 ceiling" OFF)
 set(_size_args "")
 if(TPV_STRICT_SIZE)
     set(_size_args --strict)
@@ -177,7 +187,7 @@ add_custom_command(
     COMMAND "${CMAKE_COMMAND}" -E touch "${STAGE_DIR}/size.checked"
     DEPENDS "${TOOLS_DIR}/check_size.py"
             "${STAGE_DIR}/main.bin" "${STAGE_DIR}/main4.bin"
-    COMMENT "Checking binaries fit below $9600"
+    COMMENT "Checking binaries fit below $B800"
     VERBATIM)
 
 # ---------------------------------------------------------------------------
@@ -190,10 +200,10 @@ add_custom_command(
             --assets-dir "${ASSETS_DIR}"
             --build-dir "${STAGE_DIR}"
             --out-dir "${DISKS_DIR}"
-    DEPENDS "${TOOLS_DIR}/build_hdv.py" "${TOOLS_DIR}/applesoft.py"
-            "${SRC_DIR}/startup.bas"
+    DEPENDS "${TOOLS_DIR}/build_hdv.py"
             "${ASSETS_DIR}/800kb.hdv" "${ASSETS_DIR}/pcm.blob"
             "${STAGE_DIR}/art.blob"
+            "${STAGE_DIR}/tpilot.sys"
             "${STAGE_DIR}/main.bin" "${STAGE_DIR}/main4.bin"
             "${STAGE_DIR}/size.checked"
     COMMENT "Building 800KB ProDOS hard disk image"
@@ -207,10 +217,10 @@ add_custom_command(
             --assets-dir "${ASSETS_DIR}"
             --build-dir "${STAGE_DIR}"
             --out-dir "${DISKS_DIR}"
-    DEPENDS "${TOOLS_DIR}/build_disk.py" "${TOOLS_DIR}/applesoft.py"
-            "${SRC_DIR}/startup_d1.bas"
+    DEPENDS "${TOOLS_DIR}/build_disk.py"
             "${ASSETS_DIR}/140kb.po" "${ASSETS_DIR}/pcm.blob"
             "${STAGE_DIR}/art.blob"
+            "${STAGE_DIR}/tpilot.sys"
             "${STAGE_DIR}/main.bin" "${STAGE_DIR}/main4.bin"
             "${STAGE_DIR}/size.checked"
     COMMENT "Building dual 140KB ProDOS floppy images"

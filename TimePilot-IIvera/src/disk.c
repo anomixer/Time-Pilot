@@ -3,7 +3,7 @@
 // and 800KB ProDOS HDV images transparently.
 //
 // Dual 140KB Floppy Layout:
-//   - Drive 1 (Disk 1): PRODOS, BASIC.SYSTEM, STARTUP, MAIN.BIN, ART (block 128)
+//   - Drive 1 (Disk 1): PRODOS, TPILOT.SYSTEM, MAIN.BIN, ART (block 128)
 //   - Drive 2 (Disk 2): PCM Audio (block 7), MAIN4.BIN
 //
 // 800KB HDV Layout:
@@ -21,8 +21,11 @@ extern void mlib_read_block(void);
 
 #define BLOCK_BYTES 512
 
-// Dedicated 512-byte streaming buffer at $0800 (Text Page 2, 100% free)
-static uint8_t * const diskBuf = (uint8_t *)0x0800;
+/* 512-byte MLI window at $B800. Must not be text page 1 ($0400, splash still
+ * visible under VERA), must not be in the $0800 load image, and the dest
+ * pages must be unmarked — crt0 paints $20-$BF used, which would make a BSS
+ * buffer illegal the same way the loader's first READ_BLOCK was. */
+static uint8_t * const diskBuf = (uint8_t *)0xB800;
 static uint16_t cached_abs_block = 0xFFFF;
 static uint8_t  cached_unit = 0xFF;
 
@@ -77,6 +80,13 @@ static void mli_read_unit(uint8_t unit, uint16_t abs_block, uint8_t *dest) {
 }
 
 void disk_init(void) {
+    /* crt0 marked $20-$BF used. Protect the $0800-$1FFF code, then free the
+     * $B800 disk window (pages $B8-$B9) so READ_BLOCK may write it. */
+    ((volatile uint8_t *)0xBF58)[1] = 0xFF;
+    ((volatile uint8_t *)0xBF58)[2] = 0xFF;
+    ((volatile uint8_t *)0xBF58)[3] = 0xFF;
+    *(volatile uint8_t *)0xBF6F &= 0x3F;
+
     boot_unit = *(volatile uint8_t *)0xBF30;
 
     // Read Key Block of Volume Directory (block 2) on the boot drive to inspect volume size

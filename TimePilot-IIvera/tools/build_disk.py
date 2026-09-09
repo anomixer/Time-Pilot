@@ -2,8 +2,8 @@
 """build_disk.py - Package Time Pilot IIvera into two 140KB ProDOS floppies.
 
 Disk 1 (TimePilot-IIvera-D1.po):
-  - PRODOS + BASIC.SYSTEM (preserved from the 140kb.po template)
-  - STARTUP  (Applesoft BASIC launcher)
+  - PRODOS (preserved from the 140kb.po template)
+  - TPILOT.SYSTEM (slot detect + loader)
   - MAIN.BIN (Slot 2 binary)
   - ART      (art.blob at fixed block 128)
 
@@ -14,21 +14,15 @@ Disk 2 (TimePilot-IIvera-D2.po):
 
 Boot sequence:
   1. Apple II boots Disk 1 in Drive 1.
-  2. STARTUP detects the VERA slot (Slot 2 or 4).
-  3. Slot 2 -> BRUN MAIN.BIN (Drive 1); Slot 4 -> BRUN MAIN4.BIN,D2 (Drive 2).
+  2. TPILOT.SYSTEM detects the VERA slot (Slot 2 or 4).
+  3. Slot 2 -> load MAIN.BIN to $0800; Slot 4 -> Disk 2, load MAIN4.BIN to $0800.
   4. In game, disk_init detects 140KB floppy mode: ART streams from Drive 1
      (block 128), PCM streams from Drive 2 (block 7).
-
-Ported from the original build_disk.mjs. The Applesoft tokenizer is now local
-(tools/applesoft.py) instead of an import from outside the project.
 """
 
 import argparse
 import os
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from applesoft import compile_file  # noqa: E402
 
 BLOCK = 512
 TOTAL_BLOCKS = 280
@@ -198,12 +192,14 @@ def main():
     base_po = os.path.join(args.assets_dir, "140kb.po")
     pcm_path = os.path.join(args.assets_dir, "pcm.blob")
     art_path = os.path.join(args.build_dir, "art.blob")
+    sys_path = os.path.join(args.build_dir, "tpilot.sys")
     main_path = os.path.join(args.build_dir, "main.bin")
     main4_path = os.path.join(args.build_dir, "main4.bin")
 
     for p, what in ((base_po, "base 140KB PO template"),
                     (pcm_path, "PCM audio asset"),
                     (art_path, "art.blob (run tools/mkart.py)"),
+                    (sys_path, "compiled tpilot.sys"),
                     (main_path, "compiled main.bin"),
                     (main4_path, "compiled main4.bin")):
         if not os.path.exists(p):
@@ -215,22 +211,26 @@ def main():
         pcm = f.read()
     with open(art_path, "rb") as f:
         art = f.read()
+    with open(sys_path, "rb") as f:
+        sys_raw = f.read()
+    if sys_raw[:4] == b"\x7fELF":
+        raise SystemExit("error: tpilot.sys looks like an ELF, not a ProDOS SYS image")
     with open(main_path, "rb") as f:
         main_load_addr, main_bin = split_bin(f.read())
     with open(main4_path, "rb") as f:
         main4_load_addr, main4_bin = split_bin(f.read())
 
-    startup_bytes = compile_file(os.path.join(args.src_dir, "startup_d1.bas"))
     os.makedirs(args.out_dir, exist_ok=True)
 
     # ---------------- Disk 1 ----------------
     print("Building Disk 1: TimePilot-IIvera-D1.po ...")
-    # Blocks 0..61 hold the system, PRODOS and BASIC.SYSTEM.
+    # Blocks 0..61 hold the system and PRODOS (and leftover BASIC.SYSTEM data
+    # we no longer catalog). TPILOT.SYSTEM is the first *.SYSTEM in the dir.
     d1 = Disk(base_image, first_free=62, used=range(0, 62))
-    preserved = d1.preserved_entries(("PRODOS", "BASIC.SYSTEM"))
+    preserved = d1.preserved_entries(("PRODOS",))
     art_blocks = d1.place_blob(art, ART_BASE_BLOCK)
 
-    f_startup = d1.write_file("STARTUP", 0xFC, 0x0801, startup_bytes)
+    f_sys = d1.write_file("TPILOT.SYSTEM", 0xFF, 0x2000, sys_raw)
     f_main = d1.write_file("MAIN.BIN", 0x06, main_load_addr, main_bin)
     f_art = d1.index_fixed_blob("ART", ART_BASE_BLOCK, art_blocks, len(art))
 
@@ -239,7 +239,7 @@ def main():
     for raw in preserved:
         d1.put_raw_entry(entry_idx, raw)
         entry_idx += 1
-    app_files = [f_startup, f_main, f_art]
+    app_files = [f_sys, f_main, f_art]
     for e in app_files:
         d1.write_dir_entry(entry_idx, e)
         entry_idx += 1
@@ -253,7 +253,7 @@ def main():
         f.write(d1.data)
     print(f"  OK: TimePilot-IIvera-D1.po ({len(d1.used)}/{TOTAL_BLOCKS} blocks "
           f"used, {TOTAL_BLOCKS - len(d1.used)} free)")
-    print(f"      STARTUP ({f_startup['total_blocks']} blk), "
+    print(f"      TPILOT.SYSTEM ({f_sys['total_blocks']} blk), "
           f"MAIN.BIN ({f_main['total_blocks']} blk), "
           f"ART ({f_art['total_blocks']} blk at block {ART_BASE_BLOCK})")
 

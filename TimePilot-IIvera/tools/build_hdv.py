@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
 """build_hdv.py - Package Time Pilot IIvera into a bootable ProDOS 8 HDV.
 
-Boot chain: ProDOS HDV -> BASIC.SYSTEM -> Applesoft STARTUP -> BRUN MAIN.BIN.
+Boot chain: ProDOS -> CLOCK.SYSTEM -> TPILOT.SYSTEM -> MAIN.BIN at $0800.
 
 Audio (pcm.blob) is placed at FIXED blocks (PCM_START_BLOCK) and read by the
 6502 directly via MLI READ_BLOCK -- it is not a named ProDOS file. Only
-MAIN.BIN, MAIN4.BIN and STARTUP get real directory entries; PCM and ART get
-index blocks pointing at their fixed data so CATALOG lists them.
-
-Ported from the original build_hdv.mjs. The Applesoft tokenizer is now local
-(tools/applesoft.py) instead of an import from outside the project.
+TPILOT.SYSTEM, MAIN.BIN and MAIN4.BIN get real directory entries; PCM and ART
+get index blocks pointing at their fixed data so CATALOG lists them.
 """
 
 import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from applesoft import compile_file  # noqa: E402
-
 BLOCK = 512
 PCM_START_BLOCK = 200   # keep in sync with offline/mkpcm_blob.mjs
 ART_START_BLOCK = 900   # keep in sync with mkart.py
 SYSTEM_RESERVE = 100    # blocks 0..99 belong to ProDOS + system files
-KEEP_FILES = ("PRODOS", "CLOCK.SYSTEM", "BASIC.SYSTEM")
+KEEP_FILES = ("PRODOS", "CLOCK.SYSTEM")
 
 
 class Allocator:
@@ -141,11 +135,13 @@ def main():
     base_hdv = os.path.join(args.assets_dir, "800kb.hdv")
     pcm_path = os.path.join(args.assets_dir, "pcm.blob")
     art_path = os.path.join(args.build_dir, "art.blob")
+    sys_path = os.path.join(args.build_dir, "tpilot.sys")
     main_path = os.path.join(args.build_dir, "main.bin")
     main4_path = os.path.join(args.build_dir, "main4.bin")
 
     for p, what in ((base_hdv, "base HDV template"),
                     (pcm_path, "PCM audio asset"),
+                    (sys_path, "compiled tpilot.sys"),
                     (main_path, "compiled main.bin")):
         if not os.path.exists(p):
             raise SystemExit(f"error: {what} not found: {p}")
@@ -157,8 +153,8 @@ def main():
     with open(main_path, "rb") as f:
         main_raw = f.read()
 
-    # Strip the 4-byte ProDOS BIN header (load addr LE + length LE). BRUN loads
-    # at the aux-type address and the file content must be raw code from byte 0.
+    # Strip the 4-byte ProDOS BIN header (load addr LE + length LE).
+    # TPILOT.SYSTEM streams the raw payload to $0800; aux_type records that.
     main_bin = main_raw[4:]
     main_load_addr = main_raw[0] | (main_raw[1] << 8)
 
@@ -179,17 +175,20 @@ def main():
     reserved |= set(range(ART_START_BLOCK, ART_START_BLOCK + art_blocks))
     alloc = Allocator(reserved)
 
-    startup_bas = os.path.join(args.src_dir, "startup.bas")
-    if not os.path.exists(startup_bas):
-        raise SystemExit(f"error: startup.bas not found at {startup_bas}")
-    startup_bytes = compile_file(startup_bas)
+    with open(sys_path, "rb") as f:
+        sys_raw = f.read()
+    # llvm-mos may write a sibling .elf; the -o path is the raw SYS image.
+    if sys_raw[:4] == b"\x7fELF":
+        raise SystemExit("error: tpilot.sys looks like an ELF, not a ProDOS SYS image")
 
-    f_startup = write_file(disk, alloc, "STARTUP", 0xFC, 0x0801, startup_bytes)
+    f_sys = write_file(disk, alloc, "TPILOT.SYSTEM", 0xFF, 0x2000, sys_raw)
     f_main = write_file(disk, alloc, "MAIN.BIN", 0x06, main_load_addr, main_bin)
+    print(f"  TPILOT.SYSTEM {len(sys_raw)}B (key={f_sys['key_block']}, "
+          f"{f_sys['total_blocks']} blocks)")
     print(f"  MAIN.BIN  {len(main_bin)}B (load=${main_load_addr:X}, "
           f"key={f_main['key_block']}, {f_main['total_blocks']} blocks)")
 
-    app_files = [f_startup, f_main]
+    app_files = [f_sys, f_main]
     if os.path.exists(main4_path):
         with open(main4_path, "rb") as f:
             raw4 = f.read()
@@ -199,8 +198,6 @@ def main():
         app_files.append(f_main4)
         print(f"  MAIN4.BIN {len(raw4) - 4}B (load=${main4_load_addr:X}, "
               f"key={f_main4['key_block']}, {f_main4['total_blocks']} blocks)")
-    print(f"  STARTUP   {len(startup_bytes)}B (key={f_startup['key_block']}, "
-          f"{f_startup['total_blocks']} blocks)")
 
     data_files = add_data_file(disk, alloc, "PCM", 0x06,
                                PCM_START_BLOCK, pcm_blocks)
