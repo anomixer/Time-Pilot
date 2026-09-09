@@ -21,7 +21,7 @@ Directly adapted from Stefan Wessels' 2024 **TimePilot-CX16** and Apple IIgs ver
 Piloting a futuristic fighter across five distinct historical eras, players engage in seamless 360-degree dogfights against era-specific enemy fleets while rescuing marooned parachute pilots drifting across space and time.
 
 * **Fixed Center Screen**: The player plane is locked at the playfield center `(104, 112)`. The sky, clouds, and asteroids scroll smoothly with 3-tier parallax based on the fighter's flight heading.
-* **Boss Battles**: Down enough enemy fighters to summon the era's flagship Boss. Destroy the boss to trigger massive multi-stage explosions, celebrate `STAGE CLEAR`, and initiate hyperspace **Time Warp** to the next era!
+* **Boss Battles**: Down enough enemy fighters to summon the era's flagship Boss. Destroy the boss to trigger massive multi-stage explosions and a hyperspace **Time Warp** to the next era!
 
 ---
 
@@ -34,9 +34,9 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
    * During boot, ProDOS Direct Block MLI (`$80`) streams **87,837 bytes (172 disk blocks) of 15 authentic arcade PCM samples** (game start theme, heavy explosions, parachute rescue, time warp whoosh, bombs, sirens, weapon explosions, gunfire, and missiles) and **56,640 bytes (111 disk blocks) of all-era sprite artwork** directly into VERA's 128 KB dual-bank VRAM (Bank 0 and Bank 1).
 2. **Disk Drive Completely Silent During Entire Play Session**:
    * Once the title screen appears and throughout all active gameplay, **the disk drive goes completely silent and the activity LED remains off**.
-   * Dogfights, heavy explosions, multi-squad formation attacks, guided missile tracking, and even inter-era stage transitions (Boss Explosion ➔ STAGE CLEAR ➔ Time Warp hyperspace beam) execute with **zero disk reads**.
-3. **Rock-Solid 60 FPS with < 1% CPU Overhead**:
-   * During 60Hz vsync, the 6502 CPU transfers ~140 bytes of PCM audio from VRAM to VERA's 4KB hardware FIFO in tens of microseconds, consuming **less than 1% CPU budget** on a stock 1.02 MHz Apple II!
+   * Dogfights, heavy explosions, multi-squad formation attacks, guided missile tracking, and even inter-era stage transitions (Boss Explosion ➔ Time Warp hyperspace beam) execute with **zero disk reads**.
+3. **60 Hz vsync lock**:
+   * One-shot PCM is copied from VRAM into VERA's FIFO during blanking. Looping PCM (boss engine drones) is expensive on a 1.02 MHz 6502 and can hitch the frame rate.
 
 ---
 
@@ -66,7 +66,7 @@ Traditional Apple II games attempting to play digitized sound effects or stream 
 | :--- | :--- | :--- | :--- |
 | **Aspect Ratio** | 320 × 240 full field + right status bar | 320 × 200 compressed field | **320 × 240 Arcade Perfect**: Left 28 cols playfield + Right 12 cols pure black status bar |
 | **Sprite Engine** | Hardware FPGA sprites | Software blitting (Racing the Beam) | **Hardware FPGA sprites**: 128 zero-flicker sprites, solid 60 FPS at 1.02 MHz |
-| **Pre-Game Announce** | Static announce screen | Static announce with Ensoniq music | **Dynamic Flight Announce**: Theme song starts during radar sweep; plane and clouds actively cruise during intro! |
+| **Pre-Game Announce** | Static announce screen | Static announce with Ensoniq music | **Dynamic Flight Announce**: Theme starts with the Stage 1 banner; plane and clouds cruise during intro. First shot can preempt the theme. |
 | **Sound System** | Single PCM queue | Ensoniq DOC wavetable | **Dual Hybrid Sound Engine**: 16-channel PSG (+6dB laser, explosion rumble) + 15 PCM samples |
 | **Boss Destruction** | Short noise burst | Ensoniq synth explosion | **1.38s Authentic Arcade Heavy PCM Explosion** with 32×16 multi-stage billowing firestorm |
 | **Time Warp Effect** | 22-step beam animation | Custom scene transition | **100% CX16 22-Step Hyperspace Beam Animation** + 1.20s PCM warp whoosh + 360° radar sweep |
@@ -104,7 +104,7 @@ Supports Apple II keyboard and native analog joystick input:
 
 ### 2. The 5 Historical Eras & Unique Weapons
 * **Stage 1: A.D. 1910 (Biplane Era)**
-  * **Enemies**: Classic World War I biplanes (16×16, 8-way rotation).
+  * **Enemies**: Classic World War I biplanes (16×16, 8-way rotation). Guns plus arcing bombs near the screen edge.
   * **Sky**: Deep Blue (`0x0006`).
   * **Boss**: **Zeppelin / Blimp** (32×16, dual animated propellers, 5 HP).
 * **Stage 2: A.D. 1940 (WWII Propeller Era)**
@@ -113,7 +113,7 @@ Supports Apple II keyboard and native analog joystick input:
   * **Threat**: **Heavy Bomber** flying horizontally across the sky, dropping vertical bombs (`bomb`). Destroying it awards **1,500 bonus points**!
   * **Boss**: **4-Engine Heavy Bomber Flagship** (32×16, 6 HP).
 * **Stage 3: A.D. 1970 (Helicopter Era)**
-  * **Enemies**: Combat helicopters (16×16, animated rotor, landing skids), firing spinning boomerangs (`boomerang`).
+  * **Enemies**: Combat helicopters (16×16, animated rotor, landing skids). Guns plus heat-seeking rockets (`rocket`).
   * **Sky**: Dark Forest Green (`0x0063`).
   * **Boss**: **CH-47 Chinook Twin-Rotor Helicopter** (32×16, dual spinning rotors, 6 HP).
 * **Stage 4: A.D. 1982 (Supersonic Jet Era)**
@@ -122,7 +122,7 @@ Supports Apple II keyboard and native analog joystick input:
   * **Threat**: Heat-seeking homing tracking rockets (`rocket`) that steer toward the player plane!
   * **Boss**: **B-52 / Supersonic Stealth Bomber** (32×16, 7 HP).
 * **Stage 5: A.D. 2001 (Future Space Era)**
-  * **Enemies**: Agile flying saucers (16×16 UFO, pulsating energy glow), firing 8-frame shifting laser pulses (`sbullet`).
+  * **Enemies**: Agile flying saucers (16×16 UFO, pulsating energy glow). Space bullets (`sbullet`) plus spinning boomerangs (`boomerang`).
   * **Sky**: Deep Black Space (`0x0000`), filled with floating space asteroids (`astro0/1/2`).
   * **Boss**: **Alien Command Mothership** (32×16, 8 HP). Domes and core render in authentic arcade Cyan (`0x00CF`), pulsating rapidly to Magenta (`0x0C0C`) when damaged below 66% health!
 
@@ -143,8 +143,7 @@ Supports Apple II keyboard and native analog joystick input:
   * **Kill Progress Bar**: 6 biplane icons smoothly decrement toward the **48-kill quota**. When depleted, sirens wail and the stage Boss descends!
 
 ### 6. Hyperspace Time Warp & Radar Transition
-* Defeating the Boss displays `STAGE CLEAR` at Row 10 (24 pixels above the centered fighter plane).
-* After 3 seconds, a 22-step white incandescent hyperspace beam envelops the fighter accompanied by the 1.20s PCM warp whoosh. The beam collapses, the plane jumps forward in time, and a 360-degree counter-clockwise radar sweep reveals the new era!
+* Defeating the Boss holds the playfield for 3 seconds with explosions still live (no `STAGE CLEAR` banner). Clouds stay. Then a 22-step hyperspace beam uses the current heading, with the 1.20s PCM warp whoosh during the beam. A 360-degree counter-clockwise radar sweep reveals the new era; `AUDIO_NEXT_LEVEL` plays at that sky change (not when wrapping to 1910).
 
 ### 7. High Score Ranking Table
 * Features a full **7-digit high score display** with the units digit strictly aligned under the `'G'` of `SCORE RANKING TABLE` at **Column 16**, verbatim matching the original Commander X16 (`cx16-1.jpg`) and arcade cabinet layout.
@@ -161,7 +160,7 @@ Supports Apple II keyboard and native analog joystick input:
    * **Fanfares & Chords**: Hardware-synthesized extra life fanfares and stage victory chords.
 2. **Dual-Bank VRAM Resident 15 Arcade PCM Samples**:
    * **Bank 0 (`$1000..$FBE2`, 60.4 KB)**: `AUDIO_GAME_START` (6.80s opening theme), `AUDIO_BOMB` (0.60s whistle), `AUDIO_PICKUP` (0.72s full rescue melody), and `AUDIO_BIG_EXPLOSION` (1.20s arcade blast). 1,054 bytes safe headroom below `$FFFF`.
-   * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**: `AUDIO_COINDROP`, `AUDIO_ROCKET_LAUNCH`, `AUDIO_ROCKET_FLY`, `AUDIO_WAVE_START`, `AUDIO_BOSSL0..3`, `AUDIO_WAPON_EXPLODE`, `AUDIO_ENEMY_SHOOT`, and `AUDIO_TIMEWARP` (1.20s whoosh). 709 bytes safe headroom before sprite RAM (`$8000`).
+   * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**: `AUDIO_COINDROP`, `AUDIO_ROCKET_LAUNCH` (launch only; the fly loop is not started), `AUDIO_WAVE_START`, `AUDIO_BOSSL0..3`, `AUDIO_WAPON_EXPLODE`, `AUDIO_ENEMY_SHOOT`, and `AUDIO_TIMEWARP` (1.20s whoosh). 709 bytes safe headroom before sprite RAM (`$8000`).
 
 ---
 
@@ -275,7 +274,7 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
 玩家駕駛一架超越時代的未來戰鬥機，穿梭於五個不同的歷史時空，在 360 度全向無邊界的天空中與各時代的敵機展開空中纏鬥，同時救援漂流在各個時空的受困跳傘飛行員。
 
 * 戰機始終位於螢幕正中央 `(104, 112)`，背景天空與大小雲層／太空隕石隨戰機航向產生流暢的 3 階視差捲動。
-* 擊墜足夠數量的敵機後，該時代的巨型母艦（Boss）將會登場。擊毀母艦後引發巨型連環爆炸並通關（`STAGE CLEAR`）躍遷至下一個時空！
+* 擊墜足夠數量的敵機後，該時代的巨型母艦（Boss）將會登場。擊毀母艦後引發巨型連環爆炸，並以超空間 **Time Warp** 躍遷至下一個時空！
 
 ---
 
@@ -288,9 +287,9 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
    * 開機引導階段透過 ProDOS MLI 直讀，一口氣將 **87,837 位元組（172 個磁區）的 15 首街機 PCM 取樣**（包含開場音樂、重低音大爆炸、跳傘員救援、時空躍遷 Time Warp 穿梭音、機槍掃射、攔截爆破等）與 **56,640 位元組（111 個磁區）的全時代精靈圖庫**，直接寫入 VERA 擴充卡的 128 KB 獨立雙 Bank 記憶體（Bank 0 與 Bank 1）。
 2. **戰鬥與換關全程零讀碟（Disk Drive Completely Silent）**：
    * 進入標題畫面與遊戲戰鬥後，**磁碟機完全靜音、讀取指示燈全程熄滅**！
-   * 無論是激烈的空戰纏鬥、重低音大爆炸、飛彈發射、甚至是擊敗 Boss 後的「大爆炸 ➔ STAGE CLEAR 凱旋和弦 ➔ Time Warp 躍遷光束」與跨時代換關，**中途 100% 不讀取任何一個磁區**！
-3. **滿幀 60 FPS 與 CPU 負載 < 1%**：
-   * 戰鬥中播放 PCM 時，6502 CPU 僅在每幀 60Hz Vsync 中斷鉤子花費數十微秒，將約 140 位元組由 VERA VRAM 複製至 VERA 4KB 硬體 FIFO 暫存器，**CPU 負載小於 1%**，締造業界罕見的絲滑街機流暢度！
+   * 無論是激烈的空戰纏鬥、重低音大爆炸、飛彈發射、甚至是擊敗 Boss 後的「大爆炸 ➔ Time Warp 躍遷光束」與跨時代換關，**中途 100% 不讀取任何一個磁區**！
+3. **鎖定 60Hz vsync**：
+   * 一次性 PCM 在消隱期間由 VRAM 送入 VERA FIFO。循環 PCM（Boss 引擎聲）在 1.02 MHz 6502 上很重，可能拖慢幀率。
 
 ---
 
@@ -320,12 +319,12 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
 | :--- | :--- | :--- | :--- |
 | **垂直視野與版面** | 320 × 240 完整視野 (40×30 比例)<br>右側黑底狀態列 | 320 × 200 壓縮視野 (垂直少 40 像素)<br>右側黑底狀態列 | **320 × 240 完美街機比例**<br>左側 28 欄戰場 + 右側 12 欄純黑狀態列 (T256C=0) |
 | **精靈繪製技術** | FPGA 硬體精靈合成，無畫面閃爍 | 純 CPU 軟體貼圖 (Mr Sprite 產生之 65816 碼)<br>需靠 **Racing the Beam** 追光束防撕裂 | **FPGA 硬體精靈合成**，128 個精靈無閃爍撕裂，1.02MHz 即可滿幀 60 FPS 運行 |
-| **開局宣告體驗** | 靜態宣告畫面，開場曲 7.13 秒 | 靜態宣告畫面，播放 Ensoniq 波表合成音樂 | **動態巡航宣告畫面**：開場曲於**雷達掃描時同步引爆**，宣告期間戰機與雲朵即時巡航流動，無縫銜接空戰！ |
-| **開場主題曲規格** | 7.13 秒 (CX16 原裝取樣，旋律自然淡出收尾) | Ensoniq DOC 晶片重製版 | **7.10 秒街機母帶完整版**<br>(消除 1.0 秒死音，旋律完結自然進入戰鬥) |
+| **開局宣告體驗** | 靜態宣告畫面，開場曲 7.13 秒 | 靜態宣告畫面，播放 Ensoniq 波表合成音樂 | **動態巡航宣告畫面**：開場曲於 Stage 1 宣告時開始，宣告期間戰機與雲朵即時巡航；開火可打斷主題曲 |
+| **開場主題曲規格** | 7.13 秒 (CX16 原裝取樣，旋律自然淡出收尾) | Ensoniq DOC 晶片重製版 | 4 聲道 PSG 開場曲，於 Stage 1 宣告時開始；不強制播完 |
 | **多音軌音效架構** | 單軌 PCM 優先權互斥佇列 | Ensoniq DOC 專屬多聲道波表合成 | **極限複合雙音效引擎**：<br>1. **PSG 雙聲道疊加齊奏 (+6dB)**：雷射、爆破、敵彈、凱旋和弦多聲道並行！<br>2. **雙 Bank 常駐 15 首 PCM**：開場曲、大爆炸、跳傘員救援、投幣、炸彈、飛彈、敵機機槍、攔截爆破、時空躍遷與四大 Boss 警報無縫串流！ |
 | **玩家爆炸震撼度** | 單軌 PCM 短雜音爆破 | Ensoniq 爆炸波表合成音效 | **真·1.38 秒正宗大型電玩重低音 PCM 爆炸**<br>伴隨 32×16 烈焰連環爆破與破片黑煙，PSG 背景音效依然並行不悖！ |
 | **過關躍遷特效** | 22 步白光曲速光束 (Time Warp)<br>戰機置中閃爍跳躍後縮為單點 | 專屬過關過場動畫 | **100% 完整還原 CX16 22 步曲速光束字型動畫**<br>白光聚能膨脹 + 戰機高頻閃爍 + 1.20s PCM 穿梭音 + 360° 雷達掃描換關 |
-| **關卡過渡音樂** | 換關重複觸發開場 PCM 主題曲 | 原生過關轉場音效 | **過關音樂完全解耦**：第 2 關起換關宣告改為短暫 PSG 凱旋和弦，開場大曲僅在首局觸發 |
+| **關卡過渡音樂** | 換關重複觸發開場 PCM 主題曲 | 原生過關轉場音效 | **`AUDIO_NEXT_LEVEL` 在天空切換時播放**（不在橫幅上；繞回 1910 時不播）。開場曲僅在首局宣告觸發 |
 | **巨大 Boss 呈現** | 32 × 16 巨大首領機陣容<br>(Blimp/Bomber/Chinook/B-52/Mothership) | 32 × 16 巨大首領機 (65816 軟體繪製) | **正版 32 × 16 巨大首領機**，具備左右航向、4 階漸進中彈受創冒煙、第五關外星母艦正宗電光青藍 (Cyan) 原色與受創洋紅警報閃爍！ |
 | **操作輸入支援** | 鍵盤 / CX16 遊戲手把 (數位 D-Pad) | 鍵盤 (Option/Apple) / 類比搖桿 | **雙模式無縫切換**：<br>1. 鍵盤（WASD / 方向鍵 / 數字鍵盤）<br>2. **Apple II 原生硬體放電類比搖桿 (PDL0/1)** 平滑 32 方位導向 |
 
@@ -361,7 +360,7 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
 
 ### 2. 五大歷史時代與時代專屬武器 (The 5 Eras & Era Weapons)
 * **第一關：A.D. 1910（雙翼機時代）**
-  * **敵機**：一戰經典雙翼教練機（16×16，雙層機翼與尾翼，8 向旋轉），發射標準機槍子彈。
+  * **敵機**：一戰經典雙翼教練機（16×16，雙層機翼與尾翼，8 向旋轉），機槍加上近螢幕邊緣的拋物線炸彈。
   * **天空**：蔚藍深空（Deep Blue，`0x0006`）。
   * **Boss**：**齊柏林巨型飛艇（Zeppelin / Blimp）**（長度達 32 像素，前後動態螺旋槳旋轉，HP 5）。
 * **第二關：A.D. 1940（二戰螺旋槳時代）**
@@ -370,7 +369,7 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
   * **專屬威脅**：**四引擎重型轟炸機（Heavy Bomber）** 橫穿空域，沿途垂直空投毀滅炸彈（`bomb`）！擊落轟炸機可獲得 1,500 分獎勵！
   * **Boss**：**二戰四發重型轟炸機首領**（32×16，HP 6）。
 * **第三關：A.D. 1970（直升機時代）**
-  * **敵機**：武裝直升機（16×16，正宗 9 向旋轉機身、動態主旋翼與著陸滑橇），發射高速旋轉的導向迴力鏢（`boomerang`）。
+  * **敵機**：武裝直升機（16×16，正宗 9 向旋轉機身、動態主旋翼與著陸滑橇）。機槍加上熱追蹤飛彈（`rocket`）。
   * **天空**：翡翠深綠（Forest Green，`0x0063`）。
   * **Boss**：**CH-47 雙旋翼巨型直升機（Chinook Helicopter）**（32×16，前後雙旋翼高速旋轉，HP 6）。
 * **第四關：A.D. 1982（超音速噴射機時代）**
@@ -380,7 +379,7 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
   * **Boss**：**超音速隱形戰略轟炸機（B-52 / Supersonic Bomber）**（32×16，HP 7）。
 * **第五關：A.D. 2001（未來太空時代）**
   * **背景**：漆黑深邃太空（Deep Black Space，`0x0000`，漂浮著大小不一的太空隕石取代雲層）。
-  * **敵機**：敏捷的外星飛碟（16×16 UFO，4 影格能量光環持續頻閃），發射 8 影格色彩變換的能量雷射脈衝光球（`sbullet`）！
+  * **敵機**：敏捷的外星飛碟（16×16 UFO，4 影格能量光環持續頻閃）。能量彈（`sbullet`）加上旋轉迴力鏢（`boomerang`）。
   * **Boss**：**外星指揮太空母艦（Alien Command Mothership）**（32×16，HP 8）。座艙罩與燈條還原 1982 街機電光青藍色（Cyan，`0x00CF`）；受創低於 66% 時在青藍與洋紅（Magenta，`0x0C0C`）之間高速閃爍警報！
 
 ### 3. 空戰纏鬥獵殺 AI 與 4 機編隊突襲 (Dogfight AI & Wave Bonus)
@@ -401,9 +400,9 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
 * **擊墜進度敵機隊列**：底部排列 6 架扁平雙翼機圖標。關卡總擊墜門檻為 **48 架敵機**，每擊落 1 架敵機即平滑切削消減；當 6 架進度機全數消失時，空襲警報響起，巨型母艦 Boss 進場決戰！
 
 ### 6. 時空躍遷超空間光束 (Time Warp) 與 360 度雷達轉場
-* **STAGE CLEAR 慶祝**：擊落母艦後畫面上空（Row 10）亮起 `STAGE CLEAR` 置中歡慶 3.0 秒，與中央戰機保持 24 像素乾淨天際空距，不再壓到戰機！
-* **22 步動態超空間曲速光束與 1.2 秒正宗街機 PCM**：曲速光束啟動時同步引爆正宗 1982 街機 Time Warp 升頻穿梭 PCM 原音；背景雲朵自動隱藏確保視界純淨無阻；亮白光束橫貫 28 欄全寬劇烈激盪！戰機在光柱核心高速頻閃後，光束極速凝聚塌縮為單點躍遷消失！
-* **360 度逆時針雷達轉場**：以戰機為軸心，逆時針由 12 點鐘方向掃描全場切換至新時代天空色調，進入新關卡宣告！
+* **擊落母艦後停留 3 秒**：爆炸仍在進行，沒有 `STAGE CLEAR` 橫幅；雲層留在場上。
+* **22 步動態超空間曲速光束與 1.2 秒正宗街機 PCM**：光束使用當前航向；Time Warp PCM 在光束期間播放。戰機在光柱核心高速頻閃後，光束凝聚塌縮。
+* **360 度逆時針雷達轉場**：以戰機為軸心掃描切換至新時代天空；`AUDIO_NEXT_LEVEL` 在天空切換時播放（繞回 1910 時不播）。
 
 ### 7. 雙人輪流遊玩模式與 7 位數高分榜簽名 (2-Player & 7-Digit High Scores)
 * **2-Player 模式**：標題按 `2` 啟動，獨立記錄雙方分數、命數、時代、擊墜數，陣亡時自動換人接續戰鬥。
@@ -422,7 +421,7 @@ Boot chain: ProDOS → (HDV: `CLOCK.SYSTEM`) → `TPILOT.SYSTEM` (VERA slot dete
   * **敵彈啾啾聲、獎勵加命三連音、關卡凱旋和弦**：多聲道硬體獨立合成，毫無延遲，擊落再多敵機也絕不卡音！
 * **雙 Bank VRAM 常駐 15 首街機 PCM 音訊（100% 零磁碟運行串流）**：
   * **Bank 0 (`$1000..$FBE2`, 60.4 KB)**：開場主題曲 (`AUDIO_GAME_START`, 6.80 秒完整尾韻無死音)、二戰轟炸機空投航彈呼嘯 (`AUDIO_BOMB`, 0.60 秒)、跳傘飛行員救援音效 (`AUDIO_PICKUP`, 0.72 秒完整 9 段多音調旋律) 與重低音大爆炸 (`AUDIO_BIG_EXPLOSION`, 1.20 秒正宗震撼爆炸)，保有 1,054 位元組安全緩衝防禦暫存器邊界。
-  * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**：投幣音效 (`AUDIO_COINDROP`)、飛彈點火與巡航 (`AUDIO_ROCKET_LAUNCH` / `AUDIO_ROCKET_FLY`)、四機突襲警報 (`AUDIO_WAVE_START`)、四大關卡 Boss 巨型母艦專屬警報 (`AUDIO_BOSSL0 ~ 3`)、攔截爆炸 (`AUDIO_WAPON_EXPLODE`)、敵機機槍 (`AUDIO_ENEMY_SHOOT`)、以及**時空躍遷穿梭 PCM (`AUDIO_TIMEWARP`, 1.20 秒正宗原音)**，保有 709 位元組安全緩衝防禦精靈 RAM。
+  * **Bank 1 (`$1200..$7D3B`, 27.5 KB)**：投幣音效 (`AUDIO_COINDROP`)、飛彈點火 (`AUDIO_ROCKET_LAUNCH`，不播放巡航循環)、四機突襲警報 (`AUDIO_WAVE_START`)、四大關卡 Boss 巨型母艦專屬警報 (`AUDIO_BOSSL0 ~ 3`)、攔截爆炸 (`AUDIO_WAPON_EXPLODE`)、敵機機槍 (`AUDIO_ENEMY_SHOOT`)、以及**時空躍遷穿梭 PCM (`AUDIO_TIMEWARP`, 1.20 秒正宗原音)**，保有 709 位元組安全緩衝防禦精靈 RAM。
 
 ---
 
