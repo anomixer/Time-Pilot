@@ -177,7 +177,8 @@ static const uint16_t patBossBase[5] = {
  * 3..0 (aiExplodeThing decrements activeFrame), never 0..3. */
 #define T_BOOM32        25
 #define T_BOOM16        16
-#define T_STAGE_CLEAR   90          /* 3s banner (port addition)       */
+#define T_HS_CYCLE      15          /* CX16 UI_COLORCYCLE_TIMER  (60/4) */
+#define T_HS_ENTRY      136         /* CX16 HIGHSCORE_ENTRY_TIME (~34s) */
 /* The AI thinks once per 8 frames in both games, so these transfer unscaled. */
 #define T_STEADY_MIN    22          /* CX16 ENEMY_STEADY_MIN_TIME  (3*60)/8   */
 #define T_WAVE_ACTIVE   11          /* CX16 ENEMY_WAVE_ACTIVE_TIMER (1.5*60)/8 */
@@ -188,9 +189,14 @@ static const uint16_t patBossBase[5] = {
 #define T_ANN_READY     180         /* CX16 PLAYER_ANNOUNCE_TIMER 3s (vsync)  */
 #define NUM_STAGES      5          /* 1910 / 1940 / 1970 / 1982 / 2001 (CX16 order) */
 
-/* 32-direction movement vectors (clockwise from up), magnitude ~2 px (matches arcade/CX16 pacing). */
-static const int8_t velDx[32] = {0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,0};
-static const int8_t velDy[32] = {-2,-2,-2,-2,-1,-1,-1,0,0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,0,0,0,-1,-1,-1,-2,-2,-2};
+/* 32-direction movement vectors (clockwise from up), magnitude ~2 px.
+ * Cardinals are a single heading; the two neighbours keep a 1px cross
+ * component so they do not share (dx,dy) with the cardinal. CX16's 8.8
+ * tables already do that — without it, heading 7/15/23/31 move exactly
+ * like 8/16/24/0, so an 8-frame sprite still shows NE/SE/SW/NW while
+ * world-scroll cancels thrust and the plane hangs. */
+static const int8_t velDx[32] = {0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,1,0,0,-1,-1,-1,-2,-2,-2,-2,-2,-2,-2,-1,-1,-1,-1};
+static const int8_t velDy[32] = {-2,-2,-2,-2,-1,-1,-1,-1,0,0,1,1,1,2,2,2,2,2,2,2,1,1,1,1,0,0,-1,-1,-1,-2,-2,-2};
 
 /* 84.4% velocity scaling table for Stages 0..2 (CX16 parity: 1.00 / 1.19 = 84.0%)
  * Maps velDx/velDy values (-2, -1, 0, 1, 2) shifted by +2 (indices 0..4) into 8.8 fixed-point deltas.
@@ -246,7 +252,6 @@ static uint16_t announceT        = 0;
 static uint8_t isGameStartIntro  = 0;
 static uint8_t playerBoom        = 0;
 static uint8_t playerDeadTimer   = 0;
-static const char sStageClear[]  = "STAGE CLEAR";
 static const char sPaused[]      = "PAUSED";
 static const char sRanking[]     = "SCORE RANKING TABLE";
 static const char sEnterInitials[] = "INPUT YOUR INITIALS";
@@ -345,7 +350,7 @@ static uint8_t  popupTimer;
 static uint32_t score;
 static uint8_t  lives, stage;
 static uint16_t enemiesKilled;
-static uint16_t stageClearTimer;   /* >0: showing STAGE CLEAR banner */
+static uint16_t stageClearTimer;   /* >0: post-boss 3s hold (CX16 playerExitTimer) */
 static uint16_t frameCount;        /* free-running, for blink/animation */
 static uint8_t  g_titleDrawn;      /* title screen already drawn this visit */
 static uint8_t  g_hudDirty;        /* force HUD redraw on next draw_hud() */
@@ -407,6 +412,10 @@ static int8_t   hs_row = -1;
 static uint8_t  hs_char_idx = 0;      /* 0..2 */
 static char     hs_curr_char = 'A';
 static uint16_t hs_entry_timer = 0;
+static uint8_t  hs_color_timer = 0;
+static uint8_t  hs_initials_color = 9;
+static uint8_t  hs_fire_held = 0;
+static uint8_t  hs_rep_timer = 0;
 
 static void lose_life(void);
 static void draw_hud(void);
@@ -1033,8 +1042,9 @@ static void spawn_enemy(void) {
             uint8_t a = (uint8_t)((facing + (aiRandom() & 7) - 4) & 31);
             enemyX[i] = launchX[a];
             enemyY[i] = launchY[a];
-            /* Enemy initially flies directly toward player (opposite to launch angle) */
-            uint8_t target = (uint8_t)((a + 16) & 31);
+            /* CX16 aiSpawnEnemy(): position is playerAngle ±4, but activeFrame
+             * and enemyHeading are always invPlayerAngle (playerAngle^16). */
+            uint8_t target = (uint8_t)((facing + 16) & 31);
             enemyFacing[i] = target;
             enemyHeading[i] = target;
             /* CX16 aiSpawnEnemy(): patrol by default, and only a 1-in-2 chance
@@ -1306,7 +1316,9 @@ static void boss_explode(void) {
     bossBoom = T_BOOM32;
     set_sprite(SPR_BOSS, PAT_EXPL32, (uint16_t)bossX, (uint16_t)bossY, 1, 0x60);
     audioStopSource(stageBossAudio());
+    audioStopSource(AUDIO_ROCKET_FLY);
     audioPlaySource(AUDIO_BIG_EXPLOSION);
+    bulletTimer = 0;
     for (k = 0; k < NUM_ENEMIES; k++) {
         if (enemyOn[k] && enemyBoom[k] == 0) {
             enemyBoom[k] = T_BOOM16;
@@ -1318,6 +1330,14 @@ static void boss_explode(void) {
         bomberBoom = T_BOOM32;
         set_sprite(SPR_BOMBER, PAT_EXPL32, (uint16_t)bomberX, (uint16_t)bomberY, 1, 0x60);
     }
+    if (paraOn) {
+        paraOn = 0;
+        hide_sprite(SPR_PARACHUTE);
+    }
+    /* CX16 playerExitTimer: 3s of live explosions, then the beam. No banner.
+     * Ram sets both EXIT_STAGE_CLEAR and EXIT_PLAYER_DIED — skip the warp. */
+    if (!bossRam)
+        stageClearTimer = T_PLAYER_DIED;
 }
 
 static uint8_t ray_step(uint16_t num, uint16_t den) {
@@ -1328,9 +1348,13 @@ static uint8_t ray_step(uint16_t num, uint16_t den) {
 }
 
 /* Blazing-fast octant direction solver (0..31, 0=UP, 8=RIGHT, 16=DOWN, 24=LEFT).
- * Replaces 32-iteration loop & 64 16-bit multiplications with instant comparisons. */
+ * Replaces 32-iteration loop & 64 16-bit multiplications with instant comparisons.
+ * Returns 0xFF if dx=dy=0 (undefined); callers must keep the current heading.
+ * Returning 0 (UP) made overlapping chasers all face north — and with world
+ * scroll that is "face N, drift NE", which got worse while the player was a
+ * corpse they were still homing on. */
 static uint8_t frame_toward(int16_t dx, int16_t dy) {
-    if (dx == 0 && dy == 0) return 0;
+    if (dx == 0 && dy == 0) return 0xFF;
     int16_t ax = (dx < 0) ? -dx : dx;
     int16_t ay = (dy < 0) ? -dy : dy;
     while (ax > 240 || ay > 240) {
@@ -1381,20 +1405,24 @@ static void update_game(void) {
     int16_t scrollDy = -(int16_t)velDy[facing];
     uint8_t eW = 16;
 
-    if (killTimer < 255) killTimer++;   /* CX16 scoreTimer++ in aiEndFrame() */
+    /* CX16 aiEndFrame returns before scoreTimer/spawns/bullets once the
+     * boss is dead (levelBossHealth <= 0). Explosions and scroll still run. */
+    if (bossHp > 0) {
+        if (killTimer < 255) killTimer++;
 
-    /* CX16 aiEndFrame(): once a life has lasted 1500 frames, allow a third
-     * simultaneous chaser. frameCounter is reset per stage/life there. */
-    if (lifeFrames < 1500) {
-        lifeFrames += 2;
-    } else {
-        numFollowersMax = 3;
-        numTrackedMax = 3;          /* CX16 numberOfTrackedMax */
-    }
+        /* CX16 aiEndFrame(): once a life has lasted 1500 frames, allow a third
+         * simultaneous chaser. frameCounter is reset per stage/life there. */
+        if (lifeFrames < 1500) {
+            lifeFrames += 2;
+        } else {
+            numFollowersMax = 3;
+            numTrackedMax = 3;          /* CX16 numberOfTrackedMax */
+        }
 
-    if (bulletTimer) {                  /* CX16 aiEndFrame() bullet emitter */
-        if (!(bulletTimer & 3)) fire_bullet();
-        bulletTimer--;
+        if (bulletTimer) {                  /* CX16 aiEndFrame() bullet emitter */
+            if (!(bulletTimer & 3)) fire_bullet();
+            bulletTimer--;
+        }
     }
 
     /* Player explosion handling */
@@ -1466,14 +1494,15 @@ static void update_game(void) {
                         hide_sprite(SPR_BULLET_BASE + i);
                     }
                     paraOn = 0;
-                    paraTimer = T_PARACHUTE;
-                    set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
+                    paraTimer = T_PARACHUTE + TICKS(180);
+                    paraBonusStreak = 0;
+                    hide_sprite(SPR_PARACHUTE);
                     bomberOn = 0;
                     bomberBoom = 0;
-                    bomberTimer = T_BOMBER;
-                    set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
+                    bomberTimer = T_BOMBER + TICKS(180);
+                    hide_sprite(SPR_BOMBER);
                     popupOn = 0;
-                    set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
+                    hide_sprite(SPR_POPUP);
                     bossOn = 0;
                     bossBoom = 0;
                     bossTimer = T_BOSS;
@@ -1531,7 +1560,8 @@ static void update_game(void) {
                 }
             }
 
-            /* Single player respawn (or 2P when only 1 is still alive) */
+            /* Single player respawn (or 2P when only 1 is still alive).
+             * CX16 gameStageInit wipes every object; 1P was missing the chute. */
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
                 enemyXfrac[i] = 0; enemyYfrac[i] = 0;
@@ -1542,6 +1572,16 @@ static void update_game(void) {
                 bulletOn[i] = 0;
                 hide_sprite(SPR_BULLET_BASE + i);
             }
+            paraOn = 0;
+            paraTimer = T_PARACHUTE + TICKS(180);  /* CX16 READY + PARACHUTE_TIMER */
+            paraBonusStreak = 0;
+            hide_sprite(SPR_PARACHUTE);
+            bomberOn = 0;
+            bomberBoom = 0;
+            bomberTimer = T_BOMBER + TICKS(180);
+            hide_sprite(SPR_BOMBER);
+            popupOn = 0;
+            hide_sprite(SPR_POPUP);
             if (bossOn) {
                 bossOn = 0;
                 hide_sprite(SPR_BOSS);
@@ -1626,9 +1666,9 @@ static void update_game(void) {
                 }
             } else if (k == EB_ROCKET) {
                 if (!(frameCount & 15)) {
-                    ebHead[i] = h = turn_on_ray(h,
-                        frame_toward((int16_t)playerX - (int16_t)ebX[i],
-                                     (int16_t)playerY - (int16_t)ebY[i]));
+                    uint8_t t = frame_toward((int16_t)playerX - (int16_t)ebX[i],
+                                             (int16_t)playerY - (int16_t)ebY[i]);
+                    if (t != 0xFF) ebHead[i] = h = turn_on_ray(h, t);
                     set_sprite_pat(SPR_EBULLET_BASE + i,
                         PAT_ROCKET + (uint16_t)(((h - 8) & 31) >> 1) * 256);
                 }
@@ -1636,9 +1676,9 @@ static void update_game(void) {
             } else if (k == EB_BOOMER) {
                 if (!(frameCount & 15) &&
                     ebX[i] > 48 && ebX[i] < 176 && ebY[i] > 56 && ebY[i] < 184) {
-                    ebHead[i] = h = turn_on_ray(h,
-                        frame_toward((int16_t)playerX - (int16_t)ebX[i],
-                                     (int16_t)playerY - (int16_t)ebY[i]));
+                    uint8_t t = frame_toward((int16_t)playerX - (int16_t)ebX[i],
+                                             (int16_t)playerY - (int16_t)ebY[i]);
+                    if (t != 0xFF) ebHead[i] = h = turn_on_ray(h, t);
                 }
                 set_sprite_pat(SPR_EBULLET_BASE + i,
                     PAT_BOOMERANG + (uint16_t)(frameCount & 7) * 256);
@@ -1708,7 +1748,9 @@ static void update_game(void) {
                      * the table, which will not fit on this machine. */
                     uint8_t t = frame_toward((int16_t)playerX - enemyX[i],
                                              (int16_t)playerY - enemyY[i]);
-                    enemyHeading[i] = (enemyMode[i] == 2) ? (uint8_t)((t + 16) & 31) : t;
+                    if (t != 0xFF) {
+                        enemyHeading[i] = (enemyMode[i] == 2) ? (uint8_t)((t + 16) & 31) : t;
+                    }
                 }
 
                 uint8_t diff = (uint8_t)((enemyHeading[i] - enemyFacing[i]) & 31);
@@ -1825,32 +1867,12 @@ static void update_game(void) {
         }
     }
 
-    /* Boss explosion countdown -> stage clear banner in CURRENT era. */
+    /* Boss explosion frames. CX16 leaves the rest of the world running for
+     * the full 3s playerExitTimer — do not hide anyone here. */
     if (bossBoom > 0) {
         bossBoom--;
         if (bossBoom == 0) {
-            set_sprite(SPR_BOSS, PAT_BOSS, 0, 0, 0, 0);
-            /* Clear leftover enemies/bullets from current era */
-            for (uint8_t j = 0; j < NUM_ENEMIES; j++) {
-                if (enemyOn[j]) { enemyOn[j] = 0; enemyBoom[j] = 0; hide_sprite(SPR_ENEMY_BASE + j); }
-            }
-            for (uint8_t j = 0; j < NUM_BULLETS; j++) { if (bulletOn[j]) { bulletOn[j] = 0; hide_sprite(SPR_BULLET_BASE + j); } }
-            clear_ebullets();
-            paraOn = 0;
-            paraTimer = T_PARACHUTE;
-            set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
-            bomberOn = 0;
-            bomberBoom = 0;
-            bomberTimer = T_BOMBER;
-            set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
-            popupOn = 0;
-            set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
-
-            if (!bossRam) {
-                draw_text(10, 8, sStageClear, 9);
-                stageClearTimer = T_STAGE_CLEAR;
-                audioPlaySource(AUDIO_NEXT_LEVEL);
-            }
+            hide_sprite(SPR_BOSS);
         } else {
             uint8_t fi = (uint8_t)(bossBoom >> 3);
             if (fi > 3) fi = 3;
@@ -1863,10 +1885,9 @@ static void update_game(void) {
      * Clouds stay; heading is current (CX16 screenTimeWarp). */
     if (stageClearTimer > 0) {
         stageClearTimer--;
-        if (stageClearTimer == 60) audioPlaySource(AUDIO_TIMEWARP);
+        if (stageClearTimer == T_PLAYER_DIED - TICKS(60))
+            audioPlaySource(AUDIO_TIMEWARP);
         if (stageClearTimer == 0) {
-            draw_text(10, 8, "           ", 0);
-
             for (i = 0; i < NUM_ENEMIES; i++) {
                 enemyOn[i] = 0; enemyBoom[i] = 0; enemyWave[i] = 0;
                 enemyXfrac[i] = 0; enemyYfrac[i] = 0;
@@ -1880,6 +1901,7 @@ static void update_game(void) {
             paraOn = 0; hide_sprite(SPR_PARACHUTE);
             bomberOn = 0; bomberBoom = 0; hide_sprite(SPR_BOMBER);
             bossOn = 0; bossBoom = 0; hide_sprite(SPR_BOSS);
+            popupOn = 0; hide_sprite(SPR_POPUP);
 
             screen_time_warp();
 
@@ -1893,8 +1915,13 @@ static void update_game(void) {
             numFollowersMax = 2;        /* CX16 globalsStageInit() */
             numTrackedMax = 2;
             launchSide = 0;
+            bulletTimer = 0;
 
             screen_wipe_to_sky(stage);      /* counter-clockwise radar sweep to next era! */
+            /* CX16 gameStageInit: AUDIO_NEXT_LEVEL at the sky change, not
+             * on a banner, and not when wrapping to 1910. */
+            if (stage && !isDemoMode)
+                audioPlaySource(AUDIO_NEXT_LEVEL);
             set_stage_palette();
             upload_stage_art();
             paint_status_bar();
@@ -2013,7 +2040,9 @@ static void update_game(void) {
         }
         if ((stage == 4 || waveTimer < T_RECALL) && ++spawnCounter >= scMax) {
             spawnCounter = 0;
-            spawn_enemy();
+            /* CX16 aiEndFrame: regular spawn is `&& !playerExitTimer`. */
+            if (!playerBoom && !playerDeadTimer)
+                spawn_enemy();
         }
     }
 
@@ -2205,19 +2234,8 @@ static void lose_life(void) {
     bulletTimer = 0;                    /* CX16 collidePlayer() */
     playerDeadTimer = T_PLAYER_DIED - T_BOOM32;   /* post-mortem world review */
     audioPlaySource(AUDIO_BIG_EXPLOSION);
-    if (paraOn) {
-        paraOn = 0;
-        paraTimer = T_PARACHUTE;
-        set_sprite(SPR_PARACHUTE, PAT_PARACHUTE, 0, 0, 0, 0);
-    }
-    if (bomberOn) {
-        bomberOn = 0;
-        set_sprite(SPR_BOMBER, PAT_BOMBER, 0, 0, 0, 0);
-    }
-    if (popupOn) {
-        popupOn = 0;
-        set_sprite(SPR_POPUP, PAT_NUMBERS, 0, 0, 0, 0);
-    }
+    /* CX16 leaves chute/bomber in the world for the 3s death hold;
+     * gameStageInit wipes them at READY. Do not hide here. */
 }
 
 /* Format a score right-aligned in a 7-column field (blank padded, "00" for 0). */
@@ -2523,32 +2541,46 @@ static void draw_initials(uint8_t row, uint8_t col, const char *s, uint8_t color
     }
 }
 
-/* Draw Score Ranking Table (verbatim match with cx16-1.jpg) */
+/* CX16 uiShowHighScoreTable: ranking at row 6 col 5; ranks on 8,10,12,14,16. */
 static void draw_hs_table(void) {
     uint8_t i;
-    draw_text(5, 4, sRanking, 6); /* Row 5: SCORE RANKING TABLE in Magenta (color 6) */
+    draw_text(6, 5, sRanking, 6);
     for (i = 0; i < NUM_HIGHSCORES; i++) {
-        uint8_t y = (uint8_t)(7 + i * 2);
-        draw_text(y, 4, hsRank[i], hsColor[i]);
-        /* Format score right-aligned 7 digits at col 10..16 (units digit aligned with 'G' in RANKING at col 16) */
-        char sbuf[8];
+        uint8_t y = (uint8_t)(8 + i * 2);
+        draw_text(y, 5, hsRank[i], hsColor[i]);
+        char sbuf[9];
         uint32_t ns = highScore[i];
-        for (int b = 6; b >= 0; b--) {
+        int b;
+        sbuf[8] = 0;
+        for (b = 7; b >= 0; b--) {
             sbuf[b] = (char)('0' + (ns % 10));
             ns /= 10;
         }
-        sbuf[7] = 0;
-        int z = 0;
-        while (z < 6 && sbuf[z] == '0') {
-            sbuf[z] = ' ';
-            z++;
+        b = 0;
+        while (b < 7 && sbuf[b] == '0') {
+            sbuf[b] = ' ';
+            b++;
         }
-        draw_text(y, 10, sbuf, hsColor[i]);
+        draw_text(y, 9, sbuf, hsColor[i]);
         draw_initials(y, 20, highScoreInitials[i], hsColor[i]);
     }
 }
 
 static int8_t hs_pending_player = -1;
+
+/* CX16 uiGameOver after the wipe: logo, credits, ranking, prompt at (5,0). */
+static void hs_show_entry_screen(void) {
+    screen_wipe(0);
+    set_sprite(SPR_LOGO_TIME,  PAT_LOGO_TIME,  48,  16, 1, 0x70);
+    set_sprite(SPR_LOGO_PILOT, PAT_LOGO_PILOT, 120, 16, 1, 0x70);
+    draw_text(19, 8, sKonami, 9);
+    draw_text(22, 7, sVersion, 3);
+    draw_text(24, 5, sWessels, 3);
+    g_hudDirty = 1;
+    draw_hud();
+    draw_hs_table();
+    draw_text(0, 5, sEnterInitials, 3);
+}
 
 /* Insert score val; return its rank row (0..4) or -1 if not a high score. */
 static int8_t hs_insert_score(uint32_t val) {
@@ -2568,10 +2600,31 @@ static int8_t hs_insert_score(uint32_t val) {
         highScoreInitials[j][2] = highScoreInitials[j - 1][2];
     }
     highScore[pos] = val;
+    /* CX16 strcpy(TEXT_INITIALS[x], "A  "); */
     highScoreInitials[pos][0] = 'A';
-    highScoreInitials[pos][1] = 'A';
-    highScoreInitials[pos][2] = 'A';
+    highScoreInitials[pos][1] = ' ';
+    highScoreInitials[pos][2] = ' ';
     return pos;
+}
+
+static char hs_cycle_letter(char letter, int8_t dir) {
+    uint8_t c = (uint8_t)letter;
+    if (dir < 0) {
+        c--;
+        if (c < '.') c = 'Z';
+        else if (c < 'A') c = '.';
+    } else {
+        c++;
+        if (c < 'A') c = 'A';
+        else if (c > 'Z') c = '.';
+    }
+    return (char)c;
+}
+
+static void hs_accept_letter(void) {
+    highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
+    if (++hs_char_idx < 3)
+        highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
 }
 
 static uint8_t check_and_start_hs_entry(int8_t playerIdx) {
@@ -2582,15 +2635,14 @@ static uint8_t check_and_start_hs_entry(int8_t playerIdx) {
         hs_row = r;
         hs_char_idx = 0;
         hs_curr_char = 'A';
-        hs_entry_timer = 60 * 30; /* 30 seconds timeout */
-        paint_screen();
-        if (numPlayers == 2) {
-            draw_text(1, 10, (playerIdx == 0) ? sPlayer1 : sPlayer2, 9);
-        }
-        draw_text(3, 4, sEnterInitials, 3); /* col 4 aligned with SCORE RANKING TABLE (19 chars) */
-        draw_hs_table();
+        hs_entry_timer = T_HS_ENTRY;
+        hs_color_timer = T_HS_CYCLE;
+        hs_initials_color = 9;
+        hs_fire_held = 1;       /* ignore fire held in from game-over skip */
+        hs_rep_timer = 0;
+        hs_show_entry_screen();
         state = 2;
-        titleClear = 0; /* draw_hs_table already drawn; state 2 uses titleClear as redraw flag */
+        titleClear = 0;
         audioPlaySource(AUDIO_HIGHSCORE);
         return 1;
     }
@@ -2599,9 +2651,7 @@ static uint8_t check_and_start_hs_entry(int8_t playerIdx) {
 
 static void hs_entry_completed(void) {
     audioStopSource(AUDIO_HIGHSCORE);
-    audioPlaySource(AUDIO_PICKUP);
     if (numPlayers == 2 && hs_pending_player == 0) {
-        /* Player 1 finished signing! Now check if Player 2 qualified */
         if (check_and_start_hs_entry(1)) {
             return;
         }
@@ -2790,20 +2840,22 @@ static void demo_autopilot(void) {
         int16_t tdx = targetX - (int16_t)playerX;
         int16_t tdy = targetY - (int16_t)playerY;
         uint8_t targetAngle = frame_toward(tdx, tdy);
-        if (facing != targetAngle) {
-            uint8_t diff = (uint8_t)((targetAngle - facing) & 31);
-            if (diff & 16) {
-                facing = (facing + 31) & 31;
-            } else {
-                facing = (facing + 1) & 31;
+        if (targetAngle != 0xFF) {
+            if (facing != targetAngle) {
+                uint8_t diff = (uint8_t)((targetAngle - facing) & 31);
+                if (diff & 16) {
+                    facing = (facing + 31) & 31;
+                } else {
+                    facing = (facing + 1) & 31;
+                }
+                set_sprite_pat(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256);
             }
-            set_sprite_pat(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256);
-        }
 
-        uint8_t aimDiff = (uint8_t)((targetAngle - facing) & 31);
-        if (aimDiff <= 2 || aimDiff >= 30) {
-            if (!(frameCount & 3)) {
-                request_fire();
+            uint8_t aimDiff = (uint8_t)((targetAngle - facing) & 31);
+            if (aimDiff <= 2 || aimDiff >= 30) {
+                if (!(frameCount & 3)) {
+                    request_fire();
+                }
             }
         }
     } else {
@@ -3072,13 +3124,16 @@ int main(void) {
                     useJoystick = 1;
                     audioPlaySource(AUDIO_PICKUP);
                 }
-                if (playerBoom == 0 && playerDeadTimer == 0) {
+                if (playerBoom == 0 && playerDeadTimer == 0 && stageClearTimer == 0) {
                     update_player_steering(k, ku);
                     if (k == ' ' || ku == ' ' || k == '1') request_fire();
                     if (useJoystick && (((*(volatile uint8_t *)0xC061 & 0x80) != 0) ||
                                        ((*(volatile uint8_t *)0xC062 & 0x80) != 0))) {
                         request_fire();
                     }
+                } else if (stageClearTimer > 0 && playerBoom == 0) {
+                    /* CX16 still lets you steer during the 3s fireworks. */
+                    update_player_steering(k, ku);
                 }
             }
             if (!(frameCount & 1)) {
@@ -3108,71 +3163,74 @@ int main(void) {
             }
             break;
 
-        case 2: /* High-score interactive initials entry */
+        case 2: /* High-score interactive initials entry (CX16 uiGameOver) */
             {
-                if (titleClear) {
-                    draw_hs_table(); /* Redraw only when something changed */
-                    titleClear = 0;
+                uint8_t y = (uint8_t)(8 + hs_row * 2);
+                uint8_t accepted = 0;
+                int8_t cycle = 0;
+                uint8_t fire = 0;
+                char keych = 0;
+
+                if (k == '.' || ku == '.') {
+                    keych = '.';
+                } else if (ku >= 'A' && ku <= 'Z') {
+                    keych = (char)ku;
                 }
-                uint8_t y = (uint8_t)(7 + hs_row * 2);
-
-                /* Blinking cursor for the active initial slot directly in-place */
-                char dispInitials[4];
-                dispInitials[0] = highScoreInitials[hs_row][0];
-                dispInitials[1] = highScoreInitials[hs_row][1];
-                dispInitials[2] = highScoreInitials[hs_row][2];
-                dispInitials[3] = 0;
-
-                if ((frameCount & 16) == 0) {
-                    dispInitials[hs_char_idx] = ' '; /* blink blank */
+                if (keych) {
+                    hs_curr_char = keych;
+                    hs_accept_letter();
+                    accepted = 1;
                 } else {
-                    dispInitials[hs_char_idx] = hs_curr_char;
+                    if (k == ' ' || ku == ' ' || k == 13 || k == '1')
+                        fire = 1;
+                    if (k == 8) cycle = -1;
+                    else if (k == 21) cycle = 1;
+                    if (useJoystick) {
+                        uint8_t jx = read_pdl(0);
+                        if (jx < 85) cycle = -1;
+                        else if (jx > 170) cycle = 1;
+                        if (((*(volatile uint8_t *)0xC061 & 0x80) != 0) ||
+                            ((*(volatile uint8_t *)0xC062 & 0x80) != 0))
+                            fire = 1;
+                    }
+                    if (fire && !hs_fire_held) {
+                        hs_accept_letter();
+                        accepted = 1;
+                    } else if (cycle) {
+                        if (!hs_rep_timer) {
+                            hs_curr_char = hs_cycle_letter(hs_curr_char, cycle);
+                            highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
+                            hs_rep_timer = T_HS_CYCLE;
+                        }
+                    } else {
+                        hs_rep_timer = 0;
+                    }
+                    if (hs_rep_timer) hs_rep_timer--;
                 }
-                draw_initials(y, 20, dispInitials, hsColor[hs_row]);
+                hs_fire_held = fire || (keych != 0);
 
-                /* Timeout check */
-                if (--hs_entry_timer == 0) {
-                    highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
+                if (accepted) {
                     draw_initials(y, 20, highScoreInitials[hs_row], hsColor[hs_row]);
-                    hs_entry_completed();
-                    break;
-                }
-
-                /* Direct letter input */
-                if (ku >= 'A' && ku <= 'Z') {
-                    highScoreInitials[hs_row][hs_char_idx] = (char)ku;
-                    hs_curr_char = (char)ku;
-                    draw_initials(y, 20, highScoreInitials[hs_row], hsColor[hs_row]);
-                    hs_char_idx++;
                     if (hs_char_idx >= 3) {
                         hs_entry_completed();
-                    } else {
-                        hs_curr_char = 'A';
+                        break;
                     }
-                } else if (ku == 'A' || k == 8) {
-                    /* Move letter backward */
-                    if (hs_curr_char == '.') {
-                        hs_curr_char = 'Z';
-                    } else if (hs_curr_char == 'A') {
-                        hs_curr_char = '.';
-                    } else {
-                        hs_curr_char--;
-                    }
-                } else if (ku == 'D' || k == 21) {
-                    /* Move letter forward */
-                    if (hs_curr_char == 'Z') {
-                        hs_curr_char = '.';
-                    } else if (hs_curr_char == '.') {
-                        hs_curr_char = 'A';
-                    } else {
-                        hs_curr_char++;
-                    }
-                } else if (k == ' ' || ku == ' ' || k == 13 || k == '1') {
-                    /* Confirm current letter */
-                    highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
+                }
+
+                /* CX16: current glyph colour-cycles; whole name redrawn in rank colour. */
+                {
+                    char ch[2];
+                    ch[0] = hs_curr_char;
+                    ch[1] = 0;
+                    draw_text(y, (uint8_t)(20 + hs_char_idx), ch, hs_initials_color);
+                }
+                if (--hs_color_timer == 0) {
+                    hs_color_timer = T_HS_CYCLE;
+                    hs_initials_color = (uint8_t)((9 ^ hs_initials_color) | 1);
                     draw_initials(y, 20, highScoreInitials[hs_row], hsColor[hs_row]);
-                    hs_char_idx++;
-                    if (hs_char_idx >= 3) {
+                    if (--hs_entry_timer == 0) {
+                        highScoreInitials[hs_row][hs_char_idx] = hs_curr_char;
+                        draw_initials(y, 20, highScoreInitials[hs_row], hsColor[hs_row]);
                         hs_entry_completed();
                     }
                 }
