@@ -11,8 +11,8 @@
 // Sprite artwork is extracted verbatim from the CX16 Time Pilot (art.h).
 // Sprites read palette entries 16..31 (palette_offset=1), recolored per stage.
 //
-// Controls:  A/left = rotate CCW, D/right = rotate CW
-//            WASD + keypad 8/4/6/2 + 7/9/1/3 snap the heading
+// Controls:  WASD / arrows / joystick snap the heading
+//            Q / E toggle continuous CCW / CW spin (same turn rate)
 //            SPACE / 1 = fire
 // Build:  mos-apple2e-clang -Os -o build/main.bin src/main.c
 //-----------------------------------------------------------------------------
@@ -260,6 +260,8 @@ static const char *eraLabel[5] = {
 static uint16_t playerX, playerY;
 static uint8_t  facing;                        /* 0..31 heading */
 static int8_t   targetFacing;                  /* 0..31 target heading (-1 if none) */
+static int8_t   spinDir;                       /* 0=off, -1=Q CCW, +1=E CW */
+static uint8_t  spinKey;                       /* last Q/E until IIe any-key-down clears */
 static uint16_t bulletX[NUM_BULLETS], bulletY[NUM_BULLETS];
 static int8_t   bulletVX[NUM_BULLETS], bulletVY[NUM_BULLETS];
 static uint8_t  bulletOn[NUM_BULLETS];
@@ -1481,6 +1483,8 @@ static void update_game(void) {
                     playerY = PLAYER_Y0;
                     facing = 8;
                     targetFacing = 8;
+                    spinDir = 0;
+                    spinKey = 0;
                     set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
 
                     /* Gate sprites during player switch asset streaming */
@@ -1548,6 +1552,8 @@ static void update_game(void) {
             playerY = PLAYER_Y0;
             facing = 8; /* Facing RIGHT */
             targetFacing = 8;
+            spinDir = 0;
+            spinKey = 0;
             set_sprite(SPR_PLAYER, PAT_PLAYER + (uint16_t)((facing - 8) & 31) * 256, playerX, playerY, 1, 0x50);
             reset_clouds();
             g_hudDirty = 1;
@@ -1895,6 +1901,8 @@ static void update_game(void) {
             g_hudDirty = 1;
             facing = 8;
             targetFacing = 8;
+            spinDir = 0;
+            spinKey = 0;
             playerX = PLAYER_X0;
             playerY = PLAYER_Y0;
             set_sprite(SPR_PLAYER, PAT_PLAYER, playerX, playerY, 1, 0x50);
@@ -2329,6 +2337,8 @@ static void init_game(uint8_t players_mode) {
     playerY = PLAYER_Y0;
     facing = 8; /* Facing RIGHT (matches cx16-2.jpg and arcade original) */
     targetFacing = 8;
+    spinDir = 0;
+    spinKey = 0;
     score = 0;
     lives = LIVES_MAX;
     enemiesKilled = 0;
@@ -2644,41 +2654,40 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
     static uint8_t steerStall = 0;
     steerStall++;
 
-    /* Keyboard target directional steering:
-     * Cardinal: W (UP), D (RIGHT), S/X (DOWN), A (LEFT)
-     * Q / E: Step counter-clockwise / clockwise (16 directions) */
-    if (ku == 'W' || k == 11) {
-        targetFacing = 0;   /* UP */
-    } else if (ku == 'D' || k == 21) {
-        targetFacing = 8;   /* RIGHT */
-    } else if (ku == 'S' || ku == 'X' || k == 10) {
-        targetFacing = 16;  /* DOWN */
-    } else if (ku == 'A' || k == 8) {
-        targetFacing = 24;  /* LEFT */
-    } else if (ku == 'Q') {
-        /* Counter-clockwise 1 step in 16-dir scale (2 steps of 32) */
-        if (targetFacing < 0) {
-            targetFacing = (((facing + 1) & ~1) + 30) & 31;
-        } else {
-            uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
-            if (diff > 2 && diff < 30) {
-                targetFacing = (((facing + 1) & ~1) + 30) & 31;
+    /* Q / E: toggle continuous spin at half the WASD/joystick turn rate.
+     * Same key again stops; opposite key reverses. IIe auto-repeat of the
+     * held key is ignored until $C010 any-key-down goes idle. */
+    if (ku == 'Q' || ku == 'E') {
+        if (spinKey != ku) {
+            int8_t dir = (ku == 'E') ? 1 : -1;
+            if (spinDir == dir) {
+                spinDir = 0;
+                targetFacing = (int8_t)facing;
             } else {
-                targetFacing = ((uint8_t)targetFacing + 30) & 31;
+                spinDir = dir;
+                targetFacing = -1;
             }
+            spinKey = ku;
         }
-    } else if (ku == 'E') {
-        /* Clockwise 1 step in 16-dir scale (2 steps of 32) */
-        if (targetFacing < 0) {
-            targetFacing = ((facing & ~1) + 2) & 31;
-        } else {
-            uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
-            if (diff > 2 && diff < 30) {
-                targetFacing = ((facing & ~1) + 2) & 31;
-            } else {
-                targetFacing = ((uint8_t)targetFacing + 2) & 31;
-            }
+    } else {
+        if (ku == 'W' || k == 11) {
+            spinDir = 0;
+            targetFacing = 0;   /* UP */
+        } else if (ku == 'D' || k == 21) {
+            spinDir = 0;
+            targetFacing = 8;   /* RIGHT */
+        } else if (ku == 'S' || ku == 'X' || k == 10) {
+            spinDir = 0;
+            targetFacing = 16;  /* DOWN */
+        } else if (ku == 'A' || k == 8) {
+            spinDir = 0;
+            targetFacing = 24;  /* LEFT */
         }
+        /* k==0: no new strobe. Clear spinKey only once the key is actually up
+         * (IIe $C010 bit 7 = any-key-down). Do not read $C010 when a key
+         * event is in flight — that would eat the strobe. */
+        if (k == 0 && spinKey && ((KBD_STROBE & 0x80) == 0))
+            spinKey = 0;
     }
 
     if (useJoystick) {
@@ -2689,12 +2698,15 @@ static void update_player_steering(uint8_t k, unsigned char ku) {
         uint8_t mask = (ju ? 1 : 0) | (jr ? 2 : 0) | (jd ? 4 : 0) | (jl ? 8 : 0);
         int8_t target = joyDirAngles[mask];
         if (target >= 0) {
+            spinDir = 0;
             targetFacing = target;
         }
     }
 
-    /* Smoothly turn toward targetFacing along the shortest 32-direction arc */
-    if (targetFacing >= 0 && facing != (uint8_t)targetFacing) {
+    if (spinDir) {
+        if ((steerStall & 3) == 0)
+            facing = (uint8_t)((facing + (spinDir > 0 ? 1 : 31)) & 31);
+    } else if (targetFacing >= 0 && facing != (uint8_t)targetFacing) {
         if (steerStall & 1) {
             uint8_t diff = (uint8_t)(((uint8_t)targetFacing - facing) & 31);
             if (diff <= 16) {

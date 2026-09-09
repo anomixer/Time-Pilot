@@ -169,7 +169,7 @@ int main(void) {
         put_line(4, 0, "STATUS: VERA CARD DETECTED IN SLOT 4");
 
     put_line(6, 0, "CONTROLS:");
-    put_line(8, 4, "STEER  : [W],[S],[A],[D] / [Q],[E]");
+    put_line(8, 4, "STEER  : [W],[S],[A],[D]  SPIN: Q/E");
     put_line(9, 4, "FIRE   : [SPACE]");
     put_line(10, 4, "START  : [1]-UP / [2]-UP");
     put_line(11, 4, "CONTROL: [J]OYSTICK / [K]EYBOARD");
